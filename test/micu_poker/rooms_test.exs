@@ -45,6 +45,18 @@ defmodule MicuPoker.RoomsTest do
     assert room.spectator_enabled
   end
 
+  test "list rooms excludes complete rooms from lobby results" do
+    {:ok, user} = Accounts.create_guest_user()
+    {:ok, waiting_room} = create_room(user, "Visible Room")
+    {:ok, complete_room} = create_room(user, "Complete Room")
+
+    Rooms.update_status(complete_room.id, "complete")
+
+    room_ids = Rooms.list_rooms() |> Enum.map(& &1.id)
+    assert waiting_room.id in room_ids
+    refute complete_room.id in room_ids
+  end
+
   test "room password input is ignored until protected rooms are implemented" do
     {:ok, user} = Accounts.create_guest_user()
 

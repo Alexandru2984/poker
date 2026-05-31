@@ -10,6 +10,7 @@ defmodule MicuPoker.Rooms do
 
   def list_rooms do
     Room
+    |> where([r], r.status != "complete")
     |> order_by([r], desc: r.updated_at)
     |> Repo.all()
     |> Enum.map(&with_player_count/1)

@@ -10,12 +10,19 @@ defmodule MicuPoker.Poker.TableSupervisor do
   @impl true
   def init(:ok), do: DynamicSupervisor.init(strategy: :one_for_one)
 
-  def ensure_table(room_id) do
+  def lookup_table(room_id) do
     case Registry.lookup(MicuPoker.TableRegistry, room_id) do
-      [{pid, _}] ->
+      [{pid, _}] -> {:ok, pid}
+      [] -> :not_found
+    end
+  end
+
+  def ensure_table(room_id) do
+    case lookup_table(room_id) do
+      {:ok, pid} ->
         {:ok, pid}
 
-      [] ->
+      :not_found ->
         spec = {TableServer, room_id}
 
         case DynamicSupervisor.start_child(__MODULE__, spec) do

@@ -10,8 +10,14 @@ defmodule MicuPokerWeb.ApiController do
 
   def room(conn, %{"id" => id}) do
     room = Rooms.get_room!(id)
-    {:ok, _pid} = TableSupervisor.ensure_table(room.id)
-    json(conn, %{room: room_json(room), table: TableServer.state(room.id, current_user_id(conn))})
+
+    table =
+      case TableSupervisor.lookup_table(room.id) do
+        {:ok, _pid} -> TableServer.state(room.id, current_user_id(conn))
+        :not_found -> nil
+      end
+
+    json(conn, %{room: room_json(room), table: table})
   end
 
   def stats(conn, _params), do: json(conn, Rooms.stats())

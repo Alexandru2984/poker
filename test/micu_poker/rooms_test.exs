@@ -1,8 +1,12 @@
 defmodule MicuPoker.RoomsTest do
   use MicuPoker.DataCase
 
+  import Ecto.Query
+
   alias MicuPoker.Accounts
+  alias MicuPoker.Repo
   alias MicuPoker.Rooms
+  alias MicuPoker.Rooms.{Room, RoomPlayer}
 
   test "room creation validation rejects bad blinds" do
     {:ok, user} = Accounts.create_guest_user()
@@ -58,5 +62,51 @@ defmodule MicuPoker.RoomsTest do
              )
 
     assert room.password_hash == nil
+  end
+
+  test "expire stale rooms completes rooms and releases seats" do
+    {:ok, user} = Accounts.create_guest_user()
+    {:ok, room} = create_room(user, "Stale Room")
+    {:ok, _player} = Rooms.seat_user(room, user.id)
+
+    old = DateTime.add(DateTime.utc_now(:second), -2, :hour)
+
+    Repo.update_all(from(r in Room, where: r.id == ^room.id),
+      set: [status: "active", updated_at: old]
+    )
+
+    assert {:ok, %{rooms: 1, room_players: 1}} =
+             Rooms.expire_stale_rooms(DateTime.add(DateTime.utc_now(:second), -1, :hour))
+
+    assert Rooms.get_room!(room.id).status == "complete"
+
+    assert [%{left_at: left_at, status: "left"}] =
+             Repo.all(from(rp in RoomPlayer, where: rp.room_id == ^room.id))
+
+    assert left_at
+  end
+
+  test "expire stale rooms leaves recent rooms alone" do
+    {:ok, user} = Accounts.create_guest_user()
+    {:ok, room} = create_room(user, "Fresh Room")
+    {:ok, _player} = Rooms.seat_user(room, user.id)
+
+    assert {:ok, %{rooms: 0, room_players: 0}} =
+             Rooms.expire_stale_rooms(DateTime.add(DateTime.utc_now(:second), -1, :hour))
+
+    assert Repo.one(from(rp in RoomPlayer, where: rp.room_id == ^room.id and is_nil(rp.left_at)))
+  end
+
+  defp create_room(user, name) do
+    Rooms.create_room(
+      %{
+        "name" => name,
+        "max_players" => "6",
+        "small_blind" => "5",
+        "big_blind" => "10",
+        "starting_chips" => "1000"
+      },
+      user.id
+    )
   end
 end

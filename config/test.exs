@@ -23,6 +23,8 @@ config :micu_poker, MicuPokerWeb.Endpoint,
 # In test we don't send emails
 config :micu_poker, MicuPoker.Mailer, adapter: Swoosh.Adapters.Test
 
+config :micu_poker, room_janitor_enabled: false
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

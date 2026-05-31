@@ -14,6 +14,7 @@ defmodule MicuPoker.Application do
       {Phoenix.PubSub, name: MicuPoker.PubSub},
       {Registry, keys: :unique, name: MicuPoker.TableRegistry},
       MicuPoker.Poker.TableSupervisor,
+      MicuPoker.Rooms.RoomJanitor,
       # Start the Finch HTTP client for sending emails
       {Finch, name: MicuPoker.Finch},
       # Start a worker by calling: MicuPoker.Worker.start_link(arg)

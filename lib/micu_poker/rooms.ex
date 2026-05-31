@@ -94,6 +94,38 @@ defmodule MicuPoker.Rooms do
     |> Repo.update_all(set: [status: "left", left_at: now])
   end
 
+  def expire_stale_rooms(cutoff \\ stale_room_cutoff()) do
+    now = DateTime.utc_now(:second)
+
+    stale_room_ids =
+      Room
+      |> where([r], r.status in ["active", "waiting"] and r.updated_at < ^cutoff)
+      |> select([r], r.id)
+      |> Repo.all()
+
+    Multi.new()
+    |> Multi.update_all(
+      :room_players,
+      from(rp in RoomPlayer,
+        where: rp.room_id in ^stale_room_ids and is_nil(rp.left_at)
+      ),
+      set: [status: "left", left_at: now]
+    )
+    |> Multi.update_all(
+      :rooms,
+      from(r in Room, where: r.id in ^stale_room_ids),
+      set: [status: "complete", updated_at: now]
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{room_players: {player_count, _}, rooms: {room_count, _}}} ->
+        {:ok, %{rooms: room_count, room_players: player_count}}
+
+      {:error, step, reason, changes} ->
+        {:error, %{step: step, reason: reason, changes: changes}}
+    end
+  end
+
   def create_hand(room_id, hand_number) do
     %Hand{}
     |> Hand.changeset(%{
@@ -186,6 +218,11 @@ defmodule MicuPoker.Rooms do
       completed_hands: Repo.aggregate(from(h in Hand, where: not is_nil(h.ended_at)), :count),
       play_money_only: true
     }
+  end
+
+  def stale_room_cutoff do
+    minutes = System.get_env("ROOM_IDLE_TIMEOUT_MINUTES", "240") |> String.to_integer()
+    DateTime.add(DateTime.utc_now(:second), -minutes, :minute)
   end
 
   defp with_player_count(%Room{} = room) do

@@ -109,4 +109,34 @@ defmodule MicuPokerWeb.TableLiveTest do
       assert html =~ card.suit_symbol
     end
   end
+
+  test "full room with spectators disabled redirects late viewers to lobby", %{conn: conn} do
+    {:ok, user_one} = Accounts.create_guest_user()
+    {:ok, user_two} = Accounts.create_guest_user()
+    {:ok, user_three} = Accounts.create_guest_user()
+
+    {:ok, room} =
+      Rooms.create_room(
+        %{
+          "name" => "No Spectators Test",
+          "max_players" => "2",
+          "small_blind" => "5",
+          "big_blind" => "10",
+          "starting_chips" => "1000",
+          "spectator_enabled" => "false"
+        },
+        user_one.id
+      )
+
+    start_supervised!({TableServer, room.id})
+    assert {:ok, _} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _} = TableServer.join(room.id, user_two.id)
+
+    conn = Plug.Test.init_test_session(conn, guest_user_id: user_three.id)
+
+    assert {:error, {:live_redirect, %{to: "/lobby", flash: flash}}} =
+             live(conn, ~p"/rooms/#{room.id}")
+
+    assert flash["error"] == "Table is full and spectators are disabled."
+  end
 end

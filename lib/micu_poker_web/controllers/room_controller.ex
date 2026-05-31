@@ -19,8 +19,24 @@ defmodule MicuPokerWeb.RoomController do
   def join(conn, %{"id" => id}) do
     room = Rooms.get_room!(id)
     {:ok, _pid} = TableSupervisor.ensure_table(room.id)
-    TableServer.join(room.id, conn.assigns.current_user.id)
-    redirect(conn, to: ~p"/rooms/#{room.id}")
+
+    case TableServer.join(room.id, conn.assigns.current_user.id) do
+      {:ok, _state} ->
+        redirect(conn, to: ~p"/rooms/#{room.id}")
+
+      {:spectator, _state} ->
+        redirect(conn, to: ~p"/rooms/#{room.id}")
+
+      {:error, :room_full} ->
+        conn
+        |> put_flash(:error, "Table is full and spectators are disabled.")
+        |> redirect(to: ~p"/lobby")
+
+      {:error, reason} ->
+        conn
+        |> put_flash(:error, "Could not join table: #{reason}")
+        |> redirect(to: ~p"/lobby")
+    end
   end
 
   def leave(conn, %{"id" => id}) do

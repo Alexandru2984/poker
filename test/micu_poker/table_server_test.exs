@@ -2,7 +2,7 @@ defmodule MicuPoker.Poker.TableServerTest do
   use MicuPoker.DataCase
 
   alias MicuPoker.Accounts
-  alias MicuPoker.Poker.TableServer
+  alias MicuPoker.Poker.{TableServer, TableSupervisor}
   alias MicuPoker.Repo
   alias MicuPoker.Rooms
   alias MicuPoker.Rooms.{ChipLedger, Hand, RoomPlayer}
@@ -173,6 +173,27 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert Enum.find(after_join_one.players, &(&1.user_id == user_three.id)).cards == []
   end
 
+  test "full rooms allow spectators only when spectator mode is enabled", %{
+    user_one: user_one,
+    user_two: user_two,
+    user_three: user_three
+  } do
+    {:ok, spectator_room} = create_test_room(user_one, "Spectator On", true)
+    assert {:ok, _pid} = TableSupervisor.ensure_table(spectator_room.id)
+
+    assert {:ok, _} = TableServer.join(spectator_room.id, user_one.id)
+    assert {:ok, _} = TableServer.join(spectator_room.id, user_two.id)
+    assert {:spectator, spectator_state} = TableServer.join(spectator_room.id, user_three.id)
+    refute Enum.any?(spectator_state.players, &(&1.user_id == user_three.id))
+
+    {:ok, private_room} = create_test_room(user_one, "Spectator Off", false)
+    assert {:ok, _pid} = TableSupervisor.ensure_table(private_room.id)
+
+    assert {:ok, _} = TableServer.join(private_room.id, user_one.id)
+    assert {:ok, _} = TableServer.join(private_room.id, user_two.id)
+    assert {:error, :room_full} = TableServer.join(private_room.id, user_three.id)
+  end
+
   test "manual leave during a hand folds and does not re-seat the player next hand", %{
     room: room,
     user_one: user_one,
@@ -288,5 +309,19 @@ defmodule MicuPoker.Poker.TableServerTest do
 
     assert {:error, :invalid_action} = TableServer.act(room.id, current.user_id, "bogus", 0)
     assert {:error, :rate_limited} = TableServer.act(room.id, current.user_id, "fold", 0)
+  end
+
+  defp create_test_room(user, name, spectator_enabled) do
+    Rooms.create_room(
+      %{
+        "name" => name,
+        "max_players" => "2",
+        "small_blind" => "5",
+        "big_blind" => "10",
+        "starting_chips" => "1000",
+        "spectator_enabled" => to_string(spectator_enabled)
+      },
+      user.id
+    )
   end
 end

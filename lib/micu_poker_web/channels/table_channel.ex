@@ -7,10 +7,19 @@ defmodule MicuPokerWeb.TableChannel do
   def join("table:" <> room_id, _payload, socket) do
     room_id = String.to_integer(room_id)
     {:ok, _pid} = TableSupervisor.ensure_table(room_id)
-    Phoenix.PubSub.subscribe(MicuPoker.PubSub, "table:#{room_id}")
-    TableServer.join(room_id, socket.assigns.user_id)
 
-    {:ok, TableServer.state(room_id, socket.assigns.user_id), assign(socket, :room_id, room_id)}
+    case TableServer.join(room_id, socket.assigns.user_id) do
+      {:ok, state} ->
+        Phoenix.PubSub.subscribe(MicuPoker.PubSub, "table:#{room_id}")
+        {:ok, state, assign(socket, :room_id, room_id)}
+
+      {:spectator, state} ->
+        Phoenix.PubSub.subscribe(MicuPoker.PubSub, "table:#{room_id}")
+        {:ok, state, assign(socket, :room_id, room_id)}
+
+      {:error, reason} ->
+        {:error, %{reason: to_string(reason)}}
+    end
   end
 
   @impl true

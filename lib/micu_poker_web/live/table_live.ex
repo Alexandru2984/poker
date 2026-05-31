@@ -9,13 +9,32 @@ defmodule MicuPokerWeb.TableLive do
     room = Rooms.get_room!(id)
     {:ok, _pid} = TableSupervisor.ensure_table(room.id)
 
+    case TableServer.join(room.id, socket.assigns.current_user.id) do
+      {:ok, table} ->
+        mount_table(socket, room, table)
+
+      {:spectator, table} ->
+        mount_table(socket, room, table)
+
+      {:error, :room_full} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Table is full and spectators are disabled.")
+         |> push_navigate(to: ~p"/lobby")}
+
+      {:error, reason} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Could not join table: #{reason}")
+         |> push_navigate(to: ~p"/lobby")}
+    end
+  end
+
+  defp mount_table(socket, room, table) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(MicuPoker.PubSub, "table:#{room.id}")
       Process.send_after(self(), :tick, 1_000)
     end
-
-    TableServer.join(room.id, socket.assigns.current_user.id)
-    table = TableServer.state(room.id, socket.assigns.current_user.id)
 
     {:ok,
      socket

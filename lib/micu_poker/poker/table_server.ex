@@ -82,7 +82,11 @@ defmodule MicuPoker.Poker.TableServer do
         {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
 
       {:error, :room_full} ->
-        {:reply, {:spectator, TableState.sanitize(state, user_id)}, state}
+        if state.room.spectator_enabled do
+          {:reply, {:spectator, TableState.sanitize(state, user_id)}, state}
+        else
+          {:reply, {:error, :room_full}, state}
+        end
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}

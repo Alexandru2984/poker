@@ -168,6 +168,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Public routes and APIs do not create guest users; unused guest users with no room history are removed after `UNUSED_GUEST_RETENTION_MINUTES`.
 - Public room APIs do not start table processes; table state is returned only for already-running tables.
 - Lobby and `GET /api/rooms` hide rooms marked `complete`.
+- Full rooms allow spectator access only when `spectator_enabled` is true; otherwise LiveView, POST join, and Channel joins are rejected.
 - No shell commands are executed from web requests.
 - No secrets are exposed in frontend code, README, or public APIs.
 

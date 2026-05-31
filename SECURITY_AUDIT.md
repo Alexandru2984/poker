@@ -31,6 +31,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - A supervised room janitor completes stale rooms and marks stale seats as left without deleting hand history or ledger data.
 - Public pages and APIs no longer create guest users; only app routes create guests, and unused guests without room history are eligible for janitor cleanup.
 - Public room API reads are side-effect free and do not start table GenServers.
+- Spectator mode is enforced consistently across LiveView, controller joins, and Phoenix Channels.
 - No real-money gambling features exist.
 
 ## Remaining Risks / TODO

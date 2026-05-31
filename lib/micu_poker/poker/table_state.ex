@@ -43,7 +43,7 @@ defmodule MicuPoker.Poker.TableState do
   defp player_public(player, state, viewer_id) do
     show_cards? =
       player.user_id == viewer_id or
-        state.stage in [:showdown, :complete] or
+        state.stage == :showdown or
         (state.stage == :waiting and player.cards == [])
 
     %{

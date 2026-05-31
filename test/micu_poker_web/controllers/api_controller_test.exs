@@ -3,7 +3,7 @@ defmodule MicuPokerWeb.ApiControllerTest do
 
   alias MicuPoker.Accounts
   alias MicuPoker.Accounts.User
-  alias MicuPoker.Poker.TableSupervisor
+  alias MicuPoker.Poker.{TableServer, TableSupervisor}
   alias MicuPoker.Repo
   alias MicuPoker.Rooms
 
@@ -42,5 +42,50 @@ defmodule MicuPokerWeb.ApiControllerTest do
     assert %{"room" => %{"id" => room_id}, "table" => nil} = json_response(conn, 200)
     assert room_id == room.id
     assert :not_found = TableSupervisor.lookup_table(room.id)
+  end
+
+  test "public room API does not reveal folded cards after uncontested hands", %{conn: conn} do
+    {:ok, user_one} = Accounts.create_guest_user()
+    {:ok, user_two} = Accounts.create_guest_user()
+
+    {:ok, room} =
+      Rooms.create_room(
+        %{
+          "name" => "API Privacy Room",
+          "max_players" => "2",
+          "small_blind" => "5",
+          "big_blind" => "10",
+          "starting_chips" => "1000"
+        },
+        user_one.id
+      )
+
+    start_supervised!({TableServer, room.id})
+    assert {:ok, _state} = join_connected(room, user_one)
+    assert {:ok, _state} = join_connected(room, user_two)
+
+    acting_user_id =
+      room.id
+      |> TableServer.state()
+      |> then(fn state ->
+        Enum.find(state.players, &(&1.seat_number == state.turn_seat)).user_id
+      end)
+
+    assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
+
+    conn = get(conn, ~p"/api/rooms/#{room.id}")
+
+    assert %{"table" => %{"stage" => "complete", "players" => players}} =
+             json_response(conn, 200)
+
+    for player <- players, player["in_hand"] do
+      assert Enum.all?(player["cards"], &(&1 == %{"hidden" => true}))
+      assert player["hand_summary"] == nil
+    end
+  end
+
+  defp join_connected(room, user) do
+    assert {:ok, _state} = TableServer.join(room.id, user.id)
+    TableServer.connect(room.id, user.id, make_ref())
   end
 end

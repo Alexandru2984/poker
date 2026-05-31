@@ -23,6 +23,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - `/health` returns minimal JSON and does not create a guest session.
 - The server owns deck, hole cards, turns, legal actions, pot state, and winner calculation.
 - Showdown settlement is server-side and accounts for side-pot eligibility.
+- Folded/uncontested hands keep private cards hidden from spectators and public API responses; only actual showdown reveals remaining hands.
 - Stack persistence and chip ledger writes happen with finished-hand updates in one database transaction.
 - PubSub broadcasts are sanitized; LiveView and Channel clients fetch personalized table state server-side.
 - Spectators and waiting players receive no action buttons and no private cards.

@@ -126,6 +126,42 @@ defmodule MicuPoker.Poker.TableServerTest do
            ]
   end
 
+  test "uncontested complete hands do not reveal folded private cards", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two,
+    user_three: user_three
+  } do
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
+
+    acting_user_id =
+      room.id
+      |> TableServer.state()
+      |> then(fn state ->
+        Enum.find(state.players, &(&1.seat_number == state.turn_seat)).user_id
+      end)
+
+    assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
+
+    public_view = TableServer.state(room.id, nil)
+    spectator_view = TableServer.state(room.id, user_three.id)
+
+    for view <- [public_view, spectator_view] do
+      assert view.stage == :complete
+
+      for player <- view.players, player.in_hand do
+        assert Enum.all?(player.cards, &(&1 == %{hidden: true}))
+        assert player.hand_summary == nil
+      end
+    end
+
+    acting_view = TableServer.state(room.id, acting_user_id)
+    acting_player = Enum.find(acting_view.players, &(&1.user_id == acting_user_id))
+    assert length(acting_player.cards) == 2
+    assert Enum.all?(acting_player.cards, &Map.has_key?(&1, :label))
+  end
+
   test "only the user whose turn it is receives valid turn actions", %{
     room: room,
     user_one: user_one,

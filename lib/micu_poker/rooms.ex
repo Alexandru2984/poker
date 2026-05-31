@@ -110,6 +110,44 @@ defmodule MicuPoker.Rooms do
     |> Repo.update()
   end
 
+  def persist_hand_result(%Hand{} = hand, attrs, players, ledger_entries) do
+    now = DateTime.utc_now(:second)
+
+    Multi.new()
+    |> Multi.update(:hand, Hand.changeset(hand, Map.put(attrs, :ended_at, now)))
+    |> then(fn multi ->
+      Enum.reduce(players, multi, fn player, acc ->
+        Multi.update_all(
+          acc,
+          {:stack, player.user_id},
+          from(rp in RoomPlayer,
+            where:
+              rp.room_id == ^hand.room_id and rp.user_id == ^player.user_id and is_nil(rp.left_at)
+          ),
+          set: [stack: player.stack]
+        )
+      end)
+    end)
+    |> then(fn multi ->
+      ledger_entries
+      |> Enum.reject(&(&1.delta == 0))
+      |> Enum.with_index()
+      |> Enum.reduce(multi, fn {entry, index}, acc ->
+        changeset =
+          %ChipLedger{}
+          |> ChipLedger.changeset(
+            entry
+            |> Map.put(:hand_id, hand.id)
+            |> Map.put(:room_id, hand.room_id)
+            |> Map.put(:created_at, now)
+          )
+
+        Multi.insert(acc, {:ledger, index}, changeset)
+      end)
+    end)
+    |> Repo.transaction()
+  end
+
   def record_action(hand_id, user_id, action, amount, street) do
     %HandAction{}
     |> HandAction.changeset(%{

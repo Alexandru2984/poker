@@ -139,6 +139,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Fold, check, call, bet, raise, and all-in.
 - Showdown evaluator for high card, pair, two pair, trips, straight, flush, full house, quads, straight flush, royal flush.
 - Main-pot, side-pot, and split-pot settlement at showdown.
+- Completed hands persist final table stacks, pot total, winner summaries, and zero-sum chip ledger entries.
 
 ## Known Limitations
 
@@ -157,6 +158,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Chat and repeated action attempts are rate-limited server-side.
 - Disconnects keep the seat reserved for `DISCONNECT_GRACE_SECONDS`; reconnecting restores the same seat, and expired waiting seats are removed.
 - Room metadata status is synchronized from live table state: empty rooms are complete, one connected player is waiting, and two or more connected players are active.
+- Finished hands update `room_players.stack` and write zero-sum `chip_ledger` entries for auditability.
 - No shell commands are executed from web requests.
 - No secrets are exposed in frontend code, README, or public APIs.
 

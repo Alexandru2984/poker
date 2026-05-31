@@ -3,7 +3,9 @@ defmodule MicuPoker.Poker.TableServerTest do
 
   alias MicuPoker.Accounts
   alias MicuPoker.Poker.TableServer
+  alias MicuPoker.Repo
   alias MicuPoker.Rooms
+  alias MicuPoker.Rooms.{ChipLedger, Hand, RoomPlayer}
 
   setup do
     {:ok, user_one} = Accounts.create_guest_user()
@@ -189,6 +191,46 @@ defmodule MicuPoker.Poker.TableServerTest do
     refute Enum.any?(state.players, &(&1.user_id == user_one.id))
     assert Enum.any?(state.players, &(&1.user_id == user_two.id))
     assert state.stage == :waiting
+  end
+
+  test "finished hands persist stacks, pot total, and chip ledger", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+
+    acting_user_id =
+      room.id
+      |> TableServer.state()
+      |> then(fn state ->
+        Enum.find(state.players, &(&1.seat_number == state.turn_seat)).user_id
+      end)
+
+    assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
+
+    persisted_players =
+      RoomPlayer
+      |> Repo.all()
+      |> Enum.filter(&(&1.room_id == room.id))
+      |> Map.new(&{&1.user_id, &1.stack})
+
+    in_memory_players = TableServer.state(room.id).players |> Map.new(&{&1.user_id, &1.stack})
+    assert persisted_players == in_memory_players
+
+    hand = Repo.one!(Hand)
+    assert hand.room_id == room.id
+    assert hand.pot_total == room.small_blind + room.big_blind
+
+    ledger =
+      ChipLedger
+      |> Repo.all()
+      |> Enum.filter(&(&1.room_id == room.id and &1.hand_id == hand.id))
+      |> Map.new(&{&1.user_id, &1.delta})
+
+    assert ledger |> Map.values() |> Enum.sum() == 0
+    assert map_size(ledger) == 2
   end
 
   test "disconnect keeps a seat reserved and join reconnects it", %{

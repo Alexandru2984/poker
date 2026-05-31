@@ -10,6 +10,7 @@ This is play-money only. Chips are virtual demo chips with no real-world value. 
 - Dark lobby with room filters and strict table creation validation.
 - Real-time poker table using Phoenix LiveView, Phoenix Channels, PubSub, and a GenServer per table.
 - Server-authoritative deck, private hole cards, turns, action validation, stack changes, pot, showdown, and winner calculation.
+- Real card faces with suit symbols, own-hand summaries, board texture hints, and best-five display after enough board cards.
 - Table chat with message length validation.
 - Spectator-safe public table state: other players' private cards are hidden before showdown.
 - `/health`, JSON room/stats APIs, and `/docs`.
@@ -91,6 +92,7 @@ The database password is stored only in `.env`.
 - Enabled symlink: `/etc/nginx/sites-enabled/poker.micutu.com`
 - Systemd unit: `/etc/systemd/system/micupoker.service`
 - Example unit in repo: `systemd/micupoker.service.example`
+- The systemd unit sets `RELEASE_DISTRIBUTION=none` so the release does not expose an Erlang distribution port.
 
 Certbot's Nginx plugin cannot parse the existing global CrowdSec Lua config on this VPS, so the certificate was issued with the webroot method and the SSL server block was installed manually.
 
@@ -118,6 +120,7 @@ Certbot's Nginx plugin cannot parse the existing global CrowdSec Lua config on t
 
 - Endpoint: `/socket`
 - Phoenix topic: `table:<room_id>`
+- Browser pages include a signed `<meta name="socket-token">`; channel clients must connect with `?token=<signed_token>`. Raw `user_id` query parameters are rejected.
 - Events:
   - `phx_join`
   - `state`
@@ -145,6 +148,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 ## Security And Fairness
 
 - Phoenix binds only to `127.0.0.1`; Nginx is the public entry point.
+- Erlang distribution is disabled in systemd; only the Phoenix HTTP listener is open locally.
 - Nginx adds security headers and proxies WebSockets.
 - The server owns deck, cards, turns, pot, stacks, and winners.
 - Clients never receive other players' private cards before showdown.

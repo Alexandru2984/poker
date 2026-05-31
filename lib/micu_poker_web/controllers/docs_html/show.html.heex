@@ -1,0 +1,51 @@
+<main class="docs-page">
+  <section class="docs-hero">
+    <p class="eyebrow">MicuPoker Documentation</p>
+    <h1>Play-money Texas Hold'em over Phoenix real-time channels</h1>
+    <p>
+      MicuPoker is an educational multiplayer poker demo. Chips are virtual demo chips only, have no real-world value, and cannot be bought, sold, deposited, withdrawn, paid out, cashed out, or converted to money or crypto.
+    </p>
+  </section>
+
+  <section class="docs-grid">
+    <article>
+      <h2>What v1 Does</h2>
+      <p>
+        Guests receive a server-side demo account, create or join rooms, sit at a table, chat, receive private cards, act in turn, and finish hands in real time.
+      </p>
+    </article>
+    <article>
+      <h2>Table Creation</h2>
+      <p>
+        Rooms validate name, max seats from 2 to 9, starting virtual chips, blinds, and spectator mode. Password-protected rooms are intentionally disabled in v1 until full access control is implemented.
+      </p>
+    </article>
+    <article>
+      <h2>Poker Actions</h2>
+      <p>
+        The server validates fold, check, call, bet, raise, and heads-up all-in. Turn order, deck, cards, stack changes, pot state, and winners are server-authoritative. The UI shows real card faces, suit symbols, own-hand strength, board texture, and best five cards when available.
+      </p>
+    </article>
+    <article>
+      <h2>WebSocket Events</h2>
+      <p>
+        Endpoint: <code>/socket</code>. Topic: <code>table:&lt;room_id&gt;</code>. Use the signed
+        <code>socket-token</code>
+        meta value as <code>?token=...</code>; raw <code>user_id</code>
+        parameters are rejected. Events: <code>state</code>, <code>action</code>, and <code>chat</code>. Phoenix LiveView also uses <code>/live</code>.
+      </p>
+    </article>
+    <article>
+      <h2>API Routes</h2>
+      <p>
+        <code>GET /health</code>, <code>GET /api/rooms</code>, <code>GET /api/rooms/:id</code>, <code>GET /api/stats</code>. Browser routes include <code>/</code>, <code>/lobby</code>, <code>/rooms/:id</code>, and <code>/docs</code>.
+      </p>
+    </article>
+    <article>
+      <h2>Limitations</h2>
+      <p>
+        v1 intentionally keeps all-in support to heads-up play and documents full multi-player side pots as TODO. Persistent private hole-card history is not exposed by public APIs.
+      </p>
+    </article>
+  </section>
+</main>

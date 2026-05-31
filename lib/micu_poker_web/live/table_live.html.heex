@@ -1,0 +1,234 @@
+<main class="table-shell">
+  <section class="table-header">
+    <div>
+      <.link navigate={~p"/lobby"}>Lobby</.link>
+      <h1>{@table.room.name}</h1>
+      <p>
+        Table #{@room_id} · Play-money table · {@table.room.small_blind}/{@table.room.big_blind} blinds
+      </p>
+    </div>
+    <form method="post" action={~p"/rooms/#{@room_id}/leave"}>
+      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+      <button>Leave</button>
+    </form>
+  </section>
+
+  <section class="poker-stage">
+    <div class="felt">
+      <div class="board">
+        <div class="pot">Pot <strong>{@table.pot}</strong></div>
+        <div class="cards">
+          <%= for card <- @table.board do %>
+            <span class={"card #{card.color}"}>
+              <span class="card-rank">{card.rank_label}</span>
+              <span class="card-suit">{card.suit_symbol}</span>
+            </span>
+          <% end %>
+          <%= for _ <- 1..(5 - length(@table.board)) do %>
+            <span class="card empty"></span>
+          <% end %>
+        </div>
+        <div class="street">{@table.stage} · Current bet {@table.current_bet}</div>
+        <div class="board-texture">
+          <strong>{@table.board_summary.title}</strong>
+          <span>{@table.board_summary.detail}</span>
+        </div>
+      </div>
+
+      <div class={
+        if my_turn?(@table, @current_user.id), do: "turn-banner active", else: "turn-banner"
+      }>
+        <strong>
+          {if my_turn?(@table, @current_user.id),
+            do: "Your turn",
+            else: "#{turn_player_name(@table)} to act"}
+        </strong>
+        <span>{seconds_left(@table, @now)}s</span>
+      </div>
+
+      <%= for player <- @table.players do %>
+        <div class={seat_class(player, @table)}>
+          <div class="seat-name">{player.username}</div>
+          <div class="seat-stack">{player.stack} chips</div>
+          <div class="seat-markers">
+            <%= if @table.dealer_seat == player.seat_number do %>
+              <span>D</span>
+            <% end %>
+            <%= if @table.small_blind_seat == player.seat_number do %>
+              <span>SB</span>
+            <% end %>
+            <%= if @table.big_blind_seat == player.seat_number do %>
+              <span>BB</span>
+            <% end %>
+          </div>
+          <div class="seat-cards">
+            <%= for card <- player.cards do %>
+              <%= if Map.get(card, :hidden) do %>
+                <span class="card back"></span>
+              <% else %>
+                <span class={"card mini #{card.color}"}>
+                  <span class="card-rank">{card.rank_label}</span>
+                  <span class="card-suit">{card.suit_symbol}</span>
+                </span>
+              <% end %>
+            <% end %>
+          </div>
+          <%= if player.hand_summary do %>
+            <div class="seat-hand-rank">{player.hand_summary.title}</div>
+          <% end %>
+          <%= if player.bet > 0 do %>
+            <div class="seat-bet">Bet {player.bet}</div>
+          <% end %>
+          <%= if player.folded do %>
+            <div class="seat-state">Folded</div>
+          <% end %>
+          <%= if player.all_in do %>
+            <div class="seat-state">All-in</div>
+          <% end %>
+          <%= if !player.in_hand do %>
+            <div class="seat-state">Waiting next hand</div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+
+    <aside class="side-panel">
+      <section class="your-hand-panel">
+        <h2>Your Hand</h2>
+        <% player = current_player(@table, @current_user.id) %>
+        <%= cond do %>
+          <% is_nil(player) -> %>
+            <p class="range">Spectating this table.</p>
+          <% !player.in_hand -> %>
+            <p class="range">Waiting next hand.</p>
+          <% player.cards == [] -> %>
+            <p class="range">Cards will appear when the hand starts.</p>
+          <% true -> %>
+            <div class="hand-strength">
+              <strong>{player.hand_summary.title}</strong>
+              <span>{player.hand_summary.detail}</span>
+            </div>
+            <div class="your-cards">
+              <%= for card <- player.cards do %>
+                <span class={"card #{card.color}"}>
+                  <span class="card-rank">{card.rank_label}</span>
+                  <span class="card-suit">{card.suit_symbol}</span>
+                </span>
+              <% end %>
+            </div>
+            <%= if length(player.hand_summary.cards || []) == 5 do %>
+              <div class="best-five">
+                <span>Best five</span>
+                <div>
+                  <%= for card <- player.hand_summary.cards do %>
+                    <span class={"card micro #{card.color}"}>
+                      <span class="card-rank">{card.rank_label}</span>
+                      <span class="card-suit">{card.suit_symbol}</span>
+                    </span>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+        <% end %>
+      </section>
+
+      <section class="invite-panel">
+        <h2>Invite Table</h2>
+        <p class="invite-id">Table #{@room_id}</p>
+        <div id="invite-copy" class="invite-copy" phx-hook="CopyInvite">
+          <input id="invite-url" readonly value={@invite_url} />
+          <button type="button" data-copy-button>Copy</button>
+          <p data-copy-status class="copy-status"></p>
+        </div>
+      </section>
+
+      <section class={
+        if my_turn?(@table, @current_user.id), do: "actions active", else: "actions"
+      }>
+        <div class="actions-head">
+          <h2>Actions</h2>
+          <span>{seconds_left(@table, @now)}s</span>
+        </div>
+        <%= if @table.action_deadline do %>
+          <p class="deadline">
+            <%= if my_turn?(@table, @current_user.id) do %>
+              Make your move before the timer expires.
+            <% else %>
+              Waiting for {turn_player_name(@table)}.
+            <% end %>
+          </p>
+        <% end %>
+        <div class="action-grid">
+          <button phx-click="act" phx-value-action="fold" disabled={!action?(@table, :fold)}>
+            Fold
+          </button>
+          <button phx-click="act" phx-value-action="check" disabled={!action?(@table, :check)}>
+            Check
+          </button>
+          <button phx-click="act" phx-value-action="call" disabled={!action?(@table, :call)}>
+            Call {@table.valid_actions[:call_amount] || 0}
+          </button>
+          <button phx-click="act" phx-value-action="all_in" disabled={!action?(@table, :all_in)}>
+            All-in
+          </button>
+        </div>
+        <form phx-change="bet_amount" class="bet-control">
+          <input
+            name="amount"
+            type="number"
+            value={@bet_amount}
+            min={@table.valid_actions[:min_bet] || 1}
+            max={@table.valid_actions[:max_total_bet] || 1}
+          />
+        </form>
+        <div class="action-grid">
+          <button
+            phx-click="act"
+            phx-value-action="bet"
+            phx-value-amount={@bet_amount}
+            disabled={!action?(@table, :bet)}
+          >
+            Bet
+          </button>
+          <button
+            phx-click="act"
+            phx-value-action="raise"
+            phx-value-amount={@bet_amount}
+            disabled={!action?(@table, :raise)}
+          >
+            Raise
+          </button>
+        </div>
+        <p class="range">
+          Valid range: {@table.valid_actions[:min_raise_to] || @table.valid_actions[:min_bet] || 0} to {@table.valid_actions[
+            :max_total_bet
+          ] || 0}
+        </p>
+      </section>
+
+      <section class="chat">
+        <h2>Chat</h2>
+        <.form for={to_form(%{"message" => @chat_message}, as: :chat)} phx-submit="chat">
+          <.input
+            field={to_form(%{"message" => @chat_message}, as: :chat)[:message]}
+            maxlength="300"
+            placeholder="Message"
+          />
+          <button>Send</button>
+        </.form>
+        <div class="chat-log">
+          <%= for item <- @table.chat do %>
+            <p><strong>{item.username}</strong> {item.message}</p>
+          <% end %>
+        </div>
+      </section>
+
+      <section class="hand-log">
+        <h2>Table Log</h2>
+        <%= for line <- @table.log do %>
+          <p>{line}</p>
+        <% end %>
+      </section>
+    </aside>
+  </section>
+</main>

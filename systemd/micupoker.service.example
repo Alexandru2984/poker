@@ -1,0 +1,22 @@
+[Unit]
+Description=MicuPoker Phoenix release
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=micu
+Group=micu
+WorkingDirectory=/home/micu/poker
+EnvironmentFile=/home/micu/poker/.env
+Environment=HOME=/home/micu
+Environment=RELEASE_DISTRIBUTION=none
+ExecStart=/home/micu/poker/_build/prod/rel/micu_poker/bin/micu_poker start
+ExecStop=/home/micu/poker/_build/prod/rel/micu_poker/bin/micu_poker stop
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+SyslogIdentifier=micupoker
+
+[Install]
+WantedBy=multi-user.target

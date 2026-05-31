@@ -1,0 +1,102 @@
+<main class="app-shell">
+  <section class="topbar">
+    <div>
+      <p class="eyebrow">Play-money only</p>
+      <h1>MicuPoker</h1>
+    </div>
+    <nav>
+      <.link navigate={~p"/docs"}>Docs</.link>
+      <.link href={~p"/api/stats"}>Stats API</.link>
+    </nav>
+  </section>
+
+  <section class="notice">
+    Virtual demo chips only. No deposits, withdrawals, payments, cash-out, crypto, or real-world value.
+  </section>
+
+  <section class="lobby-layout">
+    <aside class="control-panel">
+      <h2>Guest Seat</h2>
+      <.form for={@name_form} phx-submit="rename">
+        <label>Display name</label>
+        <.input field={@name_form[:username]} />
+        <button type="submit">Update</button>
+      </.form>
+
+      <h2>Create Table</h2>
+      <.form for={@room_form} phx-submit="create_room">
+        <label>Room name</label>
+        <.input field={@room_form[:name]} value="Micu Table" />
+        <label>Max players</label>
+        <.input type="number" field={@room_form[:max_players]} value="6" min="2" max="9" />
+        <label>Starting chips</label>
+        <.input
+          type="number"
+          field={@room_form[:starting_chips]}
+          value="1000"
+          min="100"
+          max="100000"
+        />
+        <label>Small blind</label>
+        <.input type="number" field={@room_form[:small_blind]} value="5" min="1" />
+        <label>Big blind</label>
+        <.input type="number" field={@room_form[:big_blind]} value="10" min="2" />
+        <label class="check-row">
+          <input type="checkbox" name="room[spectator_enabled]" checked /> Spectators
+        </label>
+        <button type="submit">Create Room</button>
+      </.form>
+    </aside>
+
+    <section class="room-list">
+      <div class="segmented">
+        <button
+          phx-click="filter"
+          phx-value-filter="all"
+          class={if @filter == "all", do: "active"}
+        >
+          All
+        </button>
+        <button
+          phx-click="filter"
+          phx-value-filter="available"
+          class={if @filter == "available", do: "active"}
+        >
+          Seats
+        </button>
+        <button
+          phx-click="filter"
+          phx-value-filter="active"
+          class={if @filter == "active", do: "active"}
+        >
+          Active
+        </button>
+        <button
+          phx-click="filter"
+          phx-value-filter="waiting"
+          class={if @filter == "waiting", do: "active"}
+        >
+          Waiting
+        </button>
+      </div>
+
+      <div class="rooms-table">
+        <div class="rooms-head">
+          <span>Room</span><span>Players</span><span>Blinds</span><span>Status</span><span></span>
+        </div>
+        <%= for room <- filtered_rooms(@rooms, @filter) do %>
+          <div class="rooms-row">
+            <strong>{room.name}</strong>
+            <span>{room.player_count}/{room.max_players}</span>
+            <span>{room.small_blind}/{room.big_blind}</span>
+            <span class="status">{room.status}</span>
+            <.link navigate={~p"/rooms/#{room.id}"}>Join</.link>
+          </div>
+        <% end %>
+        <%= if filtered_rooms(@rooms, @filter) == [] do %>
+          <div class="empty">No tables match this filter.</div>
+        <% end %>
+      </div>
+    </section>
+  </section>
+</main>

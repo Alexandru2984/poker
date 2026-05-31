@@ -32,6 +32,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Public pages and APIs no longer create guest users; only app routes create guests, and unused guests without room history are eligible for janitor cleanup.
 - Public room API reads are side-effect free and do not start table GenServers.
 - Spectator mode is enforced consistently across LiveView, controller joins, and Phoenix Channels.
+- Room creation enforces `MAX_ROOMS` against non-complete rooms to cap active table growth.
 - No real-money gambling features exist.
 
 ## Remaining Risks / TODO

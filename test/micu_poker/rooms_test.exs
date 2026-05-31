@@ -57,6 +57,30 @@ defmodule MicuPoker.RoomsTest do
     refute complete_room.id in room_ids
   end
 
+  test "room creation enforces max active room capacity" do
+    {:ok, user} = Accounts.create_guest_user()
+
+    with_env("MAX_ROOMS", "1", fn ->
+      assert {:ok, _room} = create_room(user, "Capacity One")
+
+      assert {:error, changeset} =
+               create_room(user, "Capacity Two")
+
+      assert "maximum active rooms reached" in errors_on(changeset).base
+    end)
+  end
+
+  test "complete rooms do not count against max active room capacity" do
+    {:ok, user} = Accounts.create_guest_user()
+
+    with_env("MAX_ROOMS", "1", fn ->
+      {:ok, room} = create_room(user, "Finished Capacity")
+      Rooms.update_status(room.id, "complete")
+
+      assert {:ok, _room} = create_room(user, "Replacement Capacity")
+    end)
+  end
+
   test "room password input is ignored until protected rooms are implemented" do
     {:ok, user} = Accounts.create_guest_user()
 
@@ -139,5 +163,20 @@ defmodule MicuPoker.RoomsTest do
       },
       user.id
     )
+  end
+
+  defp with_env(key, value, fun) do
+    previous = System.get_env(key)
+    System.put_env(key, value)
+
+    try do
+      fun.()
+    after
+      if previous do
+        System.put_env(key, previous)
+      else
+        System.delete_env(key)
+      end
+    end
   end
 end

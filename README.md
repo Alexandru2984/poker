@@ -13,6 +13,7 @@ This is play-money only. Chips are virtual demo chips with no real-world value. 
 - Real card faces with suit symbols, own-hand summaries, board texture hints, and best-five display after enough board cards.
 - Table chat with message length validation.
 - Spectator-safe public table state: other players' private cards are hidden before showdown.
+- Configurable active-room capacity enforcement with `MAX_ROOMS`.
 - `/health`, JSON room/stats APIs, and `/docs`.
 
 ## Stack
@@ -168,6 +169,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Public routes and APIs do not create guest users; unused guest users with no room history are removed after `UNUSED_GUEST_RETENTION_MINUTES`.
 - Public room APIs do not start table processes; table state is returned only for already-running tables.
 - Lobby and `GET /api/rooms` hide rooms marked `complete`.
+- `MAX_ROOMS` is enforced against rooms that are not `complete`, limiting accidental or abusive room growth.
 - Full rooms allow spectator access only when `spectator_enabled` is true; otherwise LiveView, POST join, and Channel joins are rejected.
 - No shell commands are executed from web requests.
 - No secrets are exposed in frontend code, README, or public APIs.

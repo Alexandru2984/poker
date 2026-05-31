@@ -42,9 +42,19 @@ defmodule MicuPokerWeb.LobbyLive do
       {:error, changeset} ->
         {:noreply,
          socket
-         |> put_flash(:error, "Room validation failed.")
+         |> put_flash(:error, "Room validation failed: #{first_error(changeset)}")
          |> assign(:room_form, to_form(changeset, as: :room))}
     end
+  end
+
+  defp first_error(changeset) do
+    changeset.errors
+    |> Enum.map(fn
+      {:base, {message, _}} -> message
+      {field, {message, _}} -> "#{field} #{message}"
+    end)
+    |> List.first()
+    |> Kernel.||("invalid values")
   end
 
   defp filtered_rooms(rooms, "available"),

@@ -4,6 +4,7 @@ defmodule MicuPoker.Rooms do
   """
 
   import Ecto.Query
+  alias Ecto.Changeset
   alias Ecto.Multi
   alias MicuPoker.Repo
   alias MicuPoker.Rooms.{ChipLedger, Hand, HandAction, Room, RoomPlayer}
@@ -29,9 +30,15 @@ defmodule MicuPoker.Rooms do
     attrs =
       normalize_room_attrs(attrs, user_id)
 
-    %Room{}
-    |> Room.changeset(attrs)
-    |> Repo.insert()
+    changeset = Room.changeset(%Room{}, attrs)
+
+    cond do
+      changeset.valid? and room_capacity_reached?() ->
+        {:error, Changeset.add_error(changeset, :base, "maximum active rooms reached")}
+
+      true ->
+        Repo.insert(changeset)
+    end
   end
 
   def update_status(room_id, status) when status in ["waiting", "active", "complete"] do
@@ -225,6 +232,18 @@ defmodule MicuPoker.Rooms do
     minutes = System.get_env("ROOM_IDLE_TIMEOUT_MINUTES", "240") |> String.to_integer()
     DateTime.add(DateTime.utc_now(:second), -minutes, :minute)
   end
+
+  def active_room_count do
+    Room
+    |> where([r], r.status != "complete")
+    |> Repo.aggregate(:count)
+  end
+
+  def max_rooms do
+    System.get_env("MAX_ROOMS", "100") |> String.to_integer()
+  end
+
+  def room_capacity_reached?, do: active_room_count() >= max_rooms()
 
   defp with_player_count(%Room{} = room) do
     count =

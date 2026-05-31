@@ -47,7 +47,10 @@ defmodule MicuPokerWeb.RoomController do
 
   defp first_error(changeset) do
     changeset.errors
-    |> Enum.map(fn {field, {message, _}} -> "#{field} #{message}" end)
+    |> Enum.map(fn
+      {:base, {message, _}} -> message
+      {field, {message, _}} -> "#{field} #{message}"
+    end)
     |> List.first()
     |> Kernel.||("invalid values")
   end

@@ -27,6 +27,15 @@ defmodule MicuPoker.Poker.TableServerTest do
     %{room: room, user_one: user_one, user_two: user_two, user_three: user_three}
   end
 
+  defp with_env(name, value) do
+    previous = System.get_env(name)
+    System.put_env(name, value)
+
+    on_exit(fn ->
+      if previous, do: System.put_env(name, previous), else: System.delete_env(name)
+    end)
+  end
+
   test "separate users can sit at the same table and start a hand", %{
     room: room,
     user_one: user_one,
@@ -143,5 +152,30 @@ defmodule MicuPoker.Poker.TableServerTest do
              second_user_cards
 
     assert Enum.find(after_join_one.players, &(&1.user_id == user_three.id)).cards == []
+  end
+
+  test "rate limits table chat", %{room: room, user_one: user_one} do
+    with_env("CHAT_RATE_LIMIT_MS", "5000")
+
+    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert :ok = TableServer.chat(room.id, user_one.id, "hello")
+    assert {:error, :rate_limited} = TableServer.chat(room.id, user_one.id, "too fast")
+  end
+
+  test "rate limits repeated action attempts", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    with_env("ACTION_RATE_LIMIT_MS", "5000")
+
+    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+
+    state = TableServer.state(room.id)
+    current = Enum.find(state.players, &(&1.seat_number == state.turn_seat))
+
+    assert {:error, :invalid_action} = TableServer.act(room.id, current.user_id, "bogus", 0)
+    assert {:error, :rate_limited} = TableServer.act(room.id, current.user_id, "fold", 0)
   end
 end

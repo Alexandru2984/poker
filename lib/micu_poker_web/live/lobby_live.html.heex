@@ -18,29 +18,37 @@
     <aside class="control-panel">
       <h2>Guest Seat</h2>
       <.form for={@name_form} phx-submit="rename">
-        <label>Display name</label>
-        <.input field={@name_form[:username]} />
+        <.input field={@name_form[:username]} label="Display name" />
         <button type="submit">Update</button>
       </.form>
 
       <h2>Create Table</h2>
       <.form for={@room_form} phx-submit="create_room">
-        <label>Room name</label>
-        <.input field={@room_form[:name]} value="Micu Table" />
-        <label>Max players</label>
-        <.input type="number" field={@room_form[:max_players]} value="6" min="2" max="9" />
-        <label>Starting chips</label>
+        <.input field={@room_form[:name]} label="Room name" value="Micu Table" />
+        <.input
+          type="number"
+          field={@room_form[:max_players]}
+          label="Max players"
+          value="6"
+          min="2"
+          max="9"
+        />
         <.input
           type="number"
           field={@room_form[:starting_chips]}
+          label="Starting chips"
           value="1000"
           min="100"
           max="100000"
         />
-        <label>Small blind</label>
-        <.input type="number" field={@room_form[:small_blind]} value="5" min="1" />
-        <label>Big blind</label>
-        <.input type="number" field={@room_form[:big_blind]} value="10" min="2" />
+        <.input
+          type="number"
+          field={@room_form[:small_blind]}
+          label="Small blind"
+          value="5"
+          min="1"
+        />
+        <.input type="number" field={@room_form[:big_blind]} label="Big blind" value="10" min="2" />
         <label class="check-row">
           <input type="checkbox" name="room[spectator_enabled]" checked /> Spectators
         </label>

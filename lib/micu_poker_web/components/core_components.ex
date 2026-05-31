@@ -17,7 +17,7 @@ defmodule MicuPokerWeb.CoreComponents do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
-  import MicuPokerWeb.Gettext
+  use Gettext, backend: MicuPokerWeb.Gettext
 
   @doc """
   Renders a modal.

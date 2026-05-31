@@ -70,6 +70,8 @@ Required variables:
 - `DEFAULT_BIG_BLIND=10`
 - `TURN_TIMEOUT_SECONDS=30`
 - `DISCONNECT_GRACE_SECONDS=60`
+- `CHAT_RATE_LIMIT_MS=1200`
+- `ACTION_RATE_LIMIT_MS=400`
 - `MAX_ROOMS=100`
 - `MAX_PLAYERS_PER_ROOM=9`
 - `MAX_CHAT_MESSAGE_LENGTH=300`
@@ -92,7 +94,7 @@ The database password is stored only in `.env`.
 - Enabled symlink: `/etc/nginx/sites-enabled/poker.micutu.com`
 - Systemd unit: `/etc/systemd/system/micupoker.service`
 - Example unit in repo: `systemd/micupoker.service.example`
-- The systemd unit sets `RELEASE_DISTRIBUTION=none` so the release does not expose an Erlang distribution port.
+- The systemd unit sets `RELEASE_DISTRIBUTION=none` so the release does not expose an Erlang distribution port. Systemd stops it with SIGTERM instead of release RPC.
 
 Certbot's Nginx plugin cannot parse the existing global CrowdSec Lua config on this VPS, so the certificate was issued with the webroot method and the SSL server block was installed manually.
 
@@ -153,6 +155,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - The server owns deck, cards, turns, pot, stacks, and winners.
 - Clients never receive other players' private cards before showdown.
 - Chat and display names are length/format constrained and HTML-escaped by Phoenix templates.
+- Chat and repeated action attempts are rate-limited server-side.
 - No shell commands are executed from web requests.
 - No secrets are exposed in frontend code, README, or public APIs.
 

@@ -50,6 +50,7 @@ defmodule MicuPoker.Poker.TableServer do
       acted: MapSet.new(),
       action_deadline: nil,
       timer_ref: nil,
+      rate_limits: %{chat: %{}, action: %{}},
       log: ["MicuPoker table opened. Play-money chips only; no real-world value."],
       chat: [],
       valid_actions_fun: &__MODULE__.valid_actions/2
@@ -100,7 +101,8 @@ defmodule MicuPoker.Poker.TableServer do
 
   def handle_call({:chat, user_id, message}, _from, state) do
     with {:ok, player} <- seated_player(state, user_id),
-         {:ok, clean} <- clean_message(message) do
+         {:ok, clean} <- clean_message(message),
+         {:ok, state} <- allow_rate(state, :chat, user_id) do
       item = %{username: player.username, message: clean, at: DateTime.utc_now(:second)}
       new_state = %{state | chat: [item | state.chat] |> Enum.take(40)}
       broadcast(new_state)
@@ -114,10 +116,16 @@ defmodule MicuPoker.Poker.TableServer do
     action = normalize_action(action)
     amount = normalize_amount(amount)
 
-    case apply_action(state, user_id, action, amount) do
-      {:ok, new_state} ->
-        broadcast(new_state)
-        {:reply, :ok, new_state}
+    case allow_rate(state, :action, user_id) do
+      {:ok, limited_state} ->
+        case apply_action(limited_state, user_id, action, amount) do
+          {:ok, new_state} ->
+            broadcast(new_state)
+            {:reply, :ok, new_state}
+
+          {:error, reason} ->
+            {:reply, {:error, reason}, limited_state}
+        end
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
@@ -678,6 +686,25 @@ defmodule MicuPoker.Poker.TableServer do
       {:ok, clean}
     end
   end
+
+  defp allow_rate(state, bucket, user_id) when bucket in [:chat, :action] do
+    now = System.monotonic_time(:millisecond)
+    interval = rate_limit_interval(bucket)
+    bucket_limits = Map.get(state.rate_limits, bucket, %{})
+    last = Map.get(bucket_limits, user_id, now - interval)
+
+    if now - last >= interval do
+      {:ok, put_in(state, [:rate_limits, bucket, user_id], now)}
+    else
+      {:error, :rate_limited}
+    end
+  end
+
+  defp rate_limit_interval(:chat),
+    do: System.get_env("CHAT_RATE_LIMIT_MS", "1200") |> String.to_integer()
+
+  defp rate_limit_interval(:action),
+    do: System.get_env("ACTION_RATE_LIMIT_MS", "400") |> String.to_integer()
 
   defp normalize_action(action) when is_atom(action), do: action
 

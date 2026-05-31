@@ -43,7 +43,7 @@ defmodule MicuPokerWeb do
         layouts: [html: MicuPokerWeb.Layouts]
 
       import Plug.Conn
-      import MicuPokerWeb.Gettext
+      use Gettext, backend: MicuPokerWeb.Gettext
 
       unquote(verified_routes())
     end
@@ -85,7 +85,7 @@ defmodule MicuPokerWeb do
       import Phoenix.HTML
       # Core UI components and translation
       import MicuPokerWeb.CoreComponents
-      import MicuPokerWeb.Gettext
+      use Gettext, backend: MicuPokerWeb.Gettext
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS

@@ -97,6 +97,25 @@ defmodule MicuPoker.RoomsTest do
     assert Repo.one(from(rp in RoomPlayer, where: rp.room_id == ^room.id and is_nil(rp.left_at)))
   end
 
+  test "janitor deletes only unused old guest users" do
+    old = DateTime.add(DateTime.utc_now(:second), -2, :hour)
+    cutoff = DateTime.add(DateTime.utc_now(:second), -1, :hour)
+
+    {:ok, unused_guest} = Accounts.create_guest_user()
+    {:ok, used_guest} = Accounts.create_guest_user()
+    {:ok, room} = create_room(used_guest, "Used Guest Room")
+    {:ok, _player} = Rooms.seat_user(room, used_guest.id)
+
+    Repo.update_all(
+      from(u in Accounts.User, where: u.id in ^[unused_guest.id, used_guest.id]),
+      set: [inserted_at: old, updated_at: old]
+    )
+
+    assert {:ok, 1} = Accounts.delete_unused_guest_users(cutoff)
+    refute Accounts.get_user(unused_guest.id)
+    assert Accounts.get_user(used_guest.id)
+  end
+
   defp create_room(user, name) do
     Rooms.create_room(
       %{

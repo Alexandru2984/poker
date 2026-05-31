@@ -6,6 +6,7 @@ defmodule MicuPoker.Accounts do
   import Ecto.Query
   alias MicuPoker.Accounts.User
   alias MicuPoker.Repo
+  alias MicuPoker.Rooms.RoomPlayer
 
   @default_chips 1000
 
@@ -42,8 +43,31 @@ defmodule MicuPoker.Accounts do
     User |> order_by(desc: :inserted_at) |> limit(^limit) |> Repo.all()
   end
 
+  def delete_unused_guest_users(cutoff \\ unused_guest_cutoff()) do
+    {count, _} =
+      from(u in User,
+        as: :user,
+        where:
+          u.password_hash == "guest" and is_nil(u.email) and u.inserted_at < ^cutoff and
+            not exists(
+              from(rp in RoomPlayer,
+                where: rp.user_id == parent_as(:user).id,
+                select: 1
+              )
+            )
+      )
+      |> Repo.delete_all()
+
+    {:ok, count}
+  end
+
   def default_chips do
     System.get_env("DEFAULT_STARTING_CHIPS", "#{@default_chips}") |> String.to_integer()
+  end
+
+  def unused_guest_cutoff do
+    minutes = System.get_env("UNUSED_GUEST_RETENTION_MINUTES", "1440") |> String.to_integer()
+    DateTime.add(DateTime.utc_now(:second), -minutes, :minute)
   end
 
   defp unique_guest_name do

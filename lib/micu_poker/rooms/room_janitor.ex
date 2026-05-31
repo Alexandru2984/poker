@@ -5,7 +5,7 @@ defmodule MicuPoker.Rooms.RoomJanitor do
 
   use GenServer
 
-  alias MicuPoker.Rooms
+  alias MicuPoker.{Accounts, Rooms}
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -23,6 +23,7 @@ defmodule MicuPoker.Rooms.RoomJanitor do
   @impl true
   def handle_info(:run, state) do
     Rooms.expire_stale_rooms()
+    Accounts.delete_unused_guest_users()
     Process.send_after(self(), :run, interval_ms())
     {:noreply, state}
   end

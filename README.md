@@ -79,6 +79,7 @@ Required variables:
 - `ROOM_JANITOR_INTERVAL_MINUTES=15`
 - `ROOM_JANITOR_INITIAL_DELAY_MS=30000`
 - `ROOM_JANITOR_ENABLED=true`
+- `UNUSED_GUEST_RETENTION_MINUTES=1440`
 
 ## PostgreSQL
 
@@ -164,6 +165,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Room metadata status is synchronized from live table state: empty rooms are complete, one connected player is waiting, and two or more connected players are active.
 - Finished hands update `room_players.stack` and write zero-sum `chip_ledger` entries for auditability.
 - A supervised room janitor completes stale rooms and releases stale seats after `ROOM_IDLE_TIMEOUT_MINUTES`.
+- Public routes and APIs do not create guest users; unused guest users with no room history are removed after `UNUSED_GUEST_RETENTION_MINUTES`.
 - No shell commands are executed from web requests.
 - No secrets are exposed in frontend code, README, or public APIs.
 

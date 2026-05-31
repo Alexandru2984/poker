@@ -4,6 +4,17 @@ defmodule MicuPokerWeb.LobbyLiveTest do
   import Phoenix.LiveViewTest
 
   alias MicuPoker.Accounts
+  alias MicuPoker.Accounts.User
+  alias MicuPoker.Repo
+
+  test "lobby creates a guest session lazily", %{conn: conn} do
+    before_count = Repo.aggregate(User, :count)
+
+    {:ok, _view, html} = live(conn, ~p"/lobby")
+
+    assert html =~ "MicuPoker"
+    assert Repo.aggregate(User, :count) == before_count + 1
+  end
 
   test "lobby form labels are connected to their inputs", %{conn: conn} do
     {:ok, user} = Accounts.create_guest_user()

@@ -29,6 +29,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Disconnected seats are marked as reconnecting, expire after the configured grace period, and do not enter new hands while disconnected.
 - Manual leave during a hand folds the player, preserves their pot contribution through settlement, and prevents them from being seated in the next hand.
 - A supervised room janitor completes stale rooms and marks stale seats as left without deleting hand history or ledger data.
+- Public pages and APIs no longer create guest users; only app routes create guests, and unused guests without room history are eligible for janitor cleanup.
 - No real-money gambling features exist.
 
 ## Remaining Risks / TODO

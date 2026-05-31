@@ -136,13 +136,12 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - 52-card secure shuffle.
 - Texas Hold'em hole cards and community cards.
 - Dealer rotation, blinds, preflop/flop/turn/river betting rounds.
-- Fold, check, call, bet, raise, and heads-up all-in.
+- Fold, check, call, bet, raise, and all-in.
 - Showdown evaluator for high card, pair, two pair, trips, straight, flush, full house, quads, straight flush, royal flush.
-- Split pots for tied winners in the main pot.
+- Main-pot, side-pot, and split-pot settlement at showdown.
 
 ## Known Limitations
 
-- Full multi-player side-pot logic is not implemented in v1. Heads-up all-in is supported; larger all-in side pots are documented TODO and not silently claimed as complete.
 - Guest mode is used instead of email/password accounts.
 - Password-protected rooms are disabled in v1 until full access control is implemented.
 - Reconnect handling is session-based; multi-tab presence counting is not implemented yet.

@@ -23,7 +23,7 @@ defmodule MicuPoker.Poker.TableState do
       chat: Enum.take(state.chat, 40),
       valid_actions: valid_actions_for_viewer(state, viewer_id),
       play_money_only: true,
-      side_pots_supported: false
+      side_pots_supported: true
     }
   end
 

@@ -5,7 +5,7 @@ defmodule MicuPoker.Poker.TableServer do
 
   use GenServer
 
-  alias MicuPoker.Poker.{Deck, HandEvaluator, TableState}
+  alias MicuPoker.Poker.{Deck, Pot, TableState}
   alias MicuPoker.Rooms
 
   @timeout_tick :turn_timeout
@@ -222,18 +222,17 @@ defmodule MicuPoker.Poker.TableServer do
       true ->
         call = call_amount(state, player)
         max_total = player.bet + player.stack
-        heads_up = active_players(state) |> length() <= 2
 
         actions =
           [:fold]
           |> maybe_add(call == 0, :check)
-          |> maybe_add(call > 0 and player.stack >= call, :call)
+          |> maybe_add(call > 0 and player.stack > 0, :call)
           |> maybe_add(state.current_bet == 0 and player.stack >= state.room.big_blind, :bet)
           |> maybe_add(
             state.current_bet > 0 and max_total >= state.current_bet + state.min_raise,
             :raise
           )
-          |> maybe_add(heads_up and player.stack > 0, :all_in)
+          |> maybe_add(player.stack > 0, :all_in)
           |> Enum.reverse()
 
         %{
@@ -361,40 +360,21 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp showdown(state) do
-    contenders = active_players(state)
     board = state.board
-
-    ranked =
-      contenders
-      |> Enum.map(fn player -> {player, HandEvaluator.evaluate(board ++ player.cards)} end)
-
-    best_score = ranked |> Enum.map(fn {_p, eval} -> eval.score end) |> Enum.max()
-    winners = ranked |> Enum.filter(fn {_p, eval} -> eval.score == best_score end)
-    share = div(state.pot, length(winners))
-    remainder = rem(state.pot, length(winners))
-
-    winner_ids = Enum.map(winners, fn {player, _eval} -> player.user_id end)
-
-    new_players =
-      Enum.map(state.players, fn player ->
-        if player.user_id in winner_ids do
-          extra = if player.user_id == hd(winner_ids), do: remainder, else: 0
-          %{player | stack: player.stack + share + extra, bet: 0}
-        else
-          %{player | bet: 0}
-        end
-      end)
+    pot_total = state.pot
+    settlement = Pot.settle_showdown(state.players, board)
 
     summary =
-      Enum.map(winners, fn {player, eval} ->
-        "#{player.username} wins with #{MicuPoker.Poker.HandSummary.human_rank(eval.name)}"
+      settlement.awards
+      |> Enum.map(fn award ->
+        "#{award.username} wins #{award.amount} with #{MicuPoker.Poker.HandSummary.human_rank(award.eval.name)}"
       end)
       |> Enum.join(", ")
 
     state =
       %{
         state
-        | players: new_players,
+        | players: settlement.players,
           stage: :showdown,
           pot: 0,
           current_bet: 0,
@@ -402,7 +382,7 @@ defmodule MicuPoker.Poker.TableServer do
           action_deadline: nil
       }
       |> add_log("Showdown: #{summary}.")
-      |> persist_finished_hand(winners, board)
+      |> persist_finished_hand(settlement.awards, board, pot_total)
       |> schedule_next_hand()
 
     state
@@ -413,6 +393,7 @@ defmodule MicuPoker.Poker.TableServer do
       state
       |> update_player(winner.user_id, &%{&1 | stack: &1.stack + state.pot, bet: 0})
       |> reset_player_bets()
+      |> reset_contributions()
       |> Map.merge(%{
         stage: :complete,
         pot: 0,
@@ -421,7 +402,18 @@ defmodule MicuPoker.Poker.TableServer do
         action_deadline: nil
       })
       |> add_log("#{winner.username} wins the pot uncontested.")
-      |> persist_finished_hand([{winner, %{name: :uncontested, score: [0]}}], state.board)
+      |> persist_finished_hand(
+        [
+          %{
+            user_id: winner.user_id,
+            username: winner.username,
+            amount: state.pot,
+            eval: %{name: :uncontested, score: [0]}
+          }
+        ],
+        state.board,
+        state.pot
+      )
       |> schedule_next_hand()
 
     state
@@ -468,6 +460,7 @@ defmodule MicuPoker.Poker.TableServer do
             folded: false,
             all_in: false,
             bet: 0,
+            contribution_total: 0,
             connected: true,
             disconnect_deadline: nil,
             in_hand: true
@@ -486,7 +479,12 @@ defmodule MicuPoker.Poker.TableServer do
     state =
       %{
         state
-        | players: players ++ Enum.map(out_players, &%{&1 | cards: [], bet: 0, in_hand: false}),
+        | players:
+            players ++
+              Enum.map(
+                out_players,
+                &%{&1 | cards: [], bet: 0, contribution_total: 0, in_hand: false}
+              ),
           deck: deck,
           board: [],
           pot: 0,
@@ -577,17 +575,19 @@ defmodule MicuPoker.Poker.TableServer do
   defp call_amount(state, player), do: max(state.current_bet - player.bet, 0)
 
   defp take_chips(state, user_id, amount) do
-    update_player(state, user_id, fn player ->
-      taken = min(player.stack, amount)
+    player = Enum.find(state.players, &(&1.user_id == user_id))
+    taken = min(player.stack, amount)
 
+    update_player(state, user_id, fn player ->
       %{
         player
         | stack: player.stack - taken,
           bet: player.bet + taken,
+          contribution_total: Map.get(player, :contribution_total, 0) + taken,
           all_in: player.stack - taken == 0
       }
     end)
-    |> Map.update!(:pot, &(&1 + amount))
+    |> Map.update!(:pot, &(&1 + taken))
   end
 
   defp maybe_update_bet(state, total, raise_by, user_id) do
@@ -615,6 +615,10 @@ defmodule MicuPoker.Poker.TableServer do
 
   defp reset_player_bets(state) do
     %{state | players: Enum.map(state.players, &%{&1 | bet: 0})}
+  end
+
+  defp reset_contributions(state) do
+    %{state | players: Enum.map(state.players, &Map.put(&1, :contribution_total, 0))}
   end
 
   defp mark_acted(state, user_id), do: %{state | acted: MapSet.put(state.acted, user_id)}
@@ -645,21 +649,22 @@ defmodule MicuPoker.Poker.TableServer do
     state
   end
 
-  defp persist_finished_hand(state, winners, board) do
+  defp persist_finished_hand(state, awards, board, pot_total) do
     if state.hand do
       Rooms.finish_hand(state.hand, %{
         board_cards_sanitized: %{cards: Enum.map(board, &MicuPoker.Poker.Card.label/1)},
         winner_summary: %{
           winners:
-            Enum.map(winners, fn {player, eval} ->
+            Enum.map(awards, fn award ->
               %{
-                user_id: player.user_id,
-                username: player.username,
-                hand: MicuPoker.Poker.HandSummary.human_rank(eval.name)
+                user_id: award.user_id,
+                username: award.username,
+                amount: award.amount,
+                hand: MicuPoker.Poker.HandSummary.human_rank(award.eval.name)
               }
             end)
         },
-        pot_total: state.pot
+        pot_total: pot_total
       })
     end
 
@@ -703,6 +708,7 @@ defmodule MicuPoker.Poker.TableServer do
         seat_number: rp.seat_number,
         stack: rp.stack,
         bet: 0,
+        contribution_total: 0,
         cards: [],
         folded: false,
         all_in: false,

@@ -17,7 +17,12 @@ defmodule MicuPoker.Poker.TableServer do
   def via(room_id), do: {:via, Registry, {MicuPoker.TableRegistry, room_id}}
 
   def join(room_id, user_id), do: GenServer.call(via(room_id), {:join, user_id})
+  def connect(room_id, user_id, ref), do: GenServer.call(via(room_id), {:connect, user_id, ref})
   def disconnect(room_id, user_id), do: GenServer.call(via(room_id), {:disconnect, user_id})
+
+  def disconnect(room_id, user_id, ref),
+    do: GenServer.call(via(room_id), {:disconnect, user_id, ref})
+
   def leave(room_id, user_id), do: GenServer.call(via(room_id), {:leave, user_id})
   def state(room_id, viewer_id \\ nil), do: GenServer.call(via(room_id), {:state, viewer_id})
 
@@ -52,6 +57,7 @@ defmodule MicuPoker.Poker.TableServer do
       action_deadline: nil,
       timer_ref: nil,
       disconnect_timers: %{},
+      connections: %{},
       rate_limits: %{chat: %{}, action: %{}},
       log: ["MicuPoker table opened. Play-money chips only; no real-world value."],
       chat: [],
@@ -73,7 +79,6 @@ defmodule MicuPoker.Poker.TableServer do
             | players: merge_seated_players(state.players, load_players(state.room_id)),
               room: Rooms.get_room!(state.room_id)
           }
-          |> cancel_disconnect_grace(user_id)
           |> add_log("Player joined the table.")
           |> maybe_start_hand()
           |> sync_room_status()
@@ -93,11 +98,30 @@ defmodule MicuPoker.Poker.TableServer do
     end
   end
 
+  def handle_call({:connect, user_id, ref}, _from, state) do
+    case seated_player(state, user_id) do
+      {:ok, _player} ->
+        new_state =
+          state
+          |> track_connection(user_id, ref)
+          |> cancel_disconnect_grace(user_id)
+          |> maybe_start_hand()
+          |> sync_room_status()
+
+        broadcast(new_state)
+        {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
   def handle_call({:leave, user_id}, _from, state) do
     Rooms.leave_room(state.room_id, user_id)
 
     new_state =
       state
+      |> clear_connections(user_id)
       |> cancel_disconnect_grace(user_id)
       |> remove_or_fold_player(user_id, "A player left the table.")
       |> sync_room_status()
@@ -109,9 +133,27 @@ defmodule MicuPoker.Poker.TableServer do
   def handle_call({:disconnect, user_id}, _from, state) do
     new_state =
       state
+      |> clear_connections(user_id)
       |> schedule_disconnect_grace(user_id)
       |> add_log("A player left the table.")
       |> sync_room_status()
+
+    broadcast(new_state)
+    {:reply, :ok, new_state}
+  end
+
+  def handle_call({:disconnect, user_id, ref}, _from, state) do
+    state = untrack_connection(state, user_id, ref)
+
+    new_state =
+      if connected_refs?(state, user_id) do
+        state
+      else
+        state
+        |> schedule_disconnect_grace(user_id)
+        |> add_log("A player left the table.")
+        |> sync_room_status()
+      end
 
     broadcast(new_state)
     {:reply, :ok, new_state}
@@ -756,7 +798,7 @@ defmodule MicuPoker.Poker.TableServer do
         folded: false,
         all_in: false,
         in_hand: false,
-        connected: true,
+        connected: false,
         disconnect_deadline: nil,
         leaving: false
       }
@@ -773,8 +815,7 @@ defmodule MicuPoker.Poker.TableServer do
           %{
             current
             | username: seated.username,
-              seat_number: seated.seat_number,
-              connected: true
+              seat_number: seated.seat_number
           }
 
         :error ->
@@ -834,6 +875,31 @@ defmodule MicuPoker.Poker.TableServer do
         |> Map.update!(:disconnect_timers, &Map.put(&1, user_id, ref))
         |> update_player(user_id, &%{&1 | connected: false, disconnect_deadline: deadline})
     end
+  end
+
+  defp track_connection(state, user_id, ref) do
+    update_in(state.connections, fn connections ->
+      Map.update(connections, user_id, MapSet.new([ref]), &MapSet.put(&1, ref))
+    end)
+  end
+
+  defp untrack_connection(state, user_id, ref) do
+    update_in(state.connections, fn connections ->
+      connections
+      |> Map.update(user_id, MapSet.new(), &MapSet.delete(&1, ref))
+      |> Map.reject(fn {_user_id, refs} -> MapSet.size(refs) == 0 end)
+    end)
+  end
+
+  defp clear_connections(state, user_id) do
+    %{state | connections: Map.delete(state.connections, user_id)}
+  end
+
+  defp connected_refs?(state, user_id) do
+    state.connections
+    |> Map.get(user_id, MapSet.new())
+    |> MapSet.size()
+    |> Kernel.>(0)
   end
 
   defp cancel_disconnect_grace(state, user_id) do

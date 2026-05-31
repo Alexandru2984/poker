@@ -9,9 +9,13 @@ defmodule MicuPokerWeb.TableChannel do
     {:ok, _pid} = TableSupervisor.ensure_table(room_id)
 
     case TableServer.join(room_id, socket.assigns.user_id) do
-      {:ok, state} ->
+      {:ok, _state} ->
+        connection_ref = make_ref()
+        {:ok, state} = TableServer.connect(room_id, socket.assigns.user_id, connection_ref)
         Phoenix.PubSub.subscribe(MicuPoker.PubSub, "table:#{room_id}")
-        {:ok, state, assign(socket, :room_id, room_id)}
+
+        {:ok, state,
+         socket |> assign(:room_id, room_id) |> assign(:connection_ref, connection_ref)}
 
       {:spectator, state} ->
         Phoenix.PubSub.subscribe(MicuPoker.PubSub, "table:#{room_id}")
@@ -46,8 +50,12 @@ defmodule MicuPokerWeb.TableChannel do
 
   @impl true
   def terminate(_reason, socket) do
-    if socket.assigns[:room_id] && socket.assigns[:user_id] do
-      TableServer.disconnect(socket.assigns.room_id, socket.assigns.user_id)
+    if socket.assigns[:room_id] && socket.assigns[:user_id] && socket.assigns[:connection_ref] do
+      TableServer.disconnect(
+        socket.assigns.room_id,
+        socket.assigns.user_id,
+        socket.assigns.connection_ref
+      )
     end
 
     :ok

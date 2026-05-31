@@ -31,6 +31,22 @@ defmodule MicuPokerWeb.TableLive do
   end
 
   defp mount_table(socket, room, table) do
+    connection_ref =
+      if connected?(socket) and
+           Enum.any?(table.players, &(&1.user_id == socket.assigns.current_user.id)) do
+        make_ref()
+      end
+
+    table =
+      if connection_ref do
+        case TableServer.connect(room.id, socket.assigns.current_user.id, connection_ref) do
+          {:ok, connected_table} -> connected_table
+          {:error, _reason} -> table
+        end
+      else
+        table
+      end
+
     if connected?(socket) do
       Phoenix.PubSub.subscribe(MicuPoker.PubSub, "table:#{room.id}")
       Process.send_after(self(), :tick, 1_000)
@@ -41,6 +57,7 @@ defmodule MicuPokerWeb.TableLive do
      |> assign(:page_title, room.name)
      |> assign(:room, room)
      |> assign(:room_id, room.id)
+     |> assign(:connection_ref, connection_ref)
      |> assign(:invite_url, MicuPokerWeb.Endpoint.url() <> ~p"/rooms/#{room.id}")
      |> assign(:table, table)
      |> assign(:now, DateTime.utc_now(:second))
@@ -92,8 +109,13 @@ defmodule MicuPokerWeb.TableLive do
 
   @impl true
   def terminate(_reason, socket) do
-    if socket.assigns[:room_id] && socket.assigns[:current_user] do
-      TableServer.disconnect(socket.assigns.room_id, socket.assigns.current_user.id)
+    if socket.assigns[:room_id] && socket.assigns[:current_user] &&
+         socket.assigns[:connection_ref] do
+      TableServer.disconnect(
+        socket.assigns.room_id,
+        socket.assigns.current_user.id,
+        socket.assigns.connection_ref
+      )
     end
 
     :ok

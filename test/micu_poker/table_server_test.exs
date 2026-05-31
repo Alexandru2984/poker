@@ -38,17 +38,22 @@ defmodule MicuPoker.Poker.TableServerTest do
     end)
   end
 
+  defp join_connected(room, user, ref \\ make_ref()) do
+    assert {:ok, _state} = TableServer.join(room.id, user.id)
+    TableServer.connect(room.id, user.id, ref)
+  end
+
   test "separate users can sit at the same table and start a hand", %{
     room: room,
     user_one: user_one,
     user_two: user_two
   } do
-    assert {:ok, state_one_waiting} = TableServer.join(room.id, user_one.id)
+    assert {:ok, state_one_waiting} = join_connected(room, user_one)
     assert [%{user_id: user_one_id}] = state_one_waiting.players
     assert user_one_id == user_one.id
     assert state_one_waiting.stage == :waiting
 
-    assert {:ok, state_two} = TableServer.join(room.id, user_two.id)
+    assert {:ok, state_two} = join_connected(room, user_two)
 
     assert state_two.stage == :preflop
     assert length(state_two.players) == 2
@@ -67,10 +72,10 @@ defmodule MicuPoker.Poker.TableServerTest do
   } do
     assert Rooms.get_room!(room.id).status == "complete"
 
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
     assert Rooms.get_room!(room.id).status == "waiting"
 
-    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _state_two} = join_connected(room, user_two)
     assert Rooms.get_room!(room.id).status == "active"
 
     assert :ok = TableServer.leave(room.id, user_one.id)
@@ -82,8 +87,8 @@ defmodule MicuPoker.Poker.TableServerTest do
     user_one: user_one,
     user_two: user_two
   } do
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
 
     view_one = TableServer.state(room.id, user_one.id)
     view_two = TableServer.state(room.id, user_two.id)
@@ -126,8 +131,8 @@ defmodule MicuPoker.Poker.TableServerTest do
     user_one: user_one,
     user_two: user_two
   } do
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
 
     view_one = TableServer.state(room.id, user_one.id)
     view_two = TableServer.state(room.id, user_two.id)
@@ -144,8 +149,8 @@ defmodule MicuPoker.Poker.TableServerTest do
     user_two: user_two,
     user_three: user_three
   } do
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
 
     before_join_one = TableServer.state(room.id, user_one.id)
     before_join_two = TableServer.state(room.id, user_two.id)
@@ -155,7 +160,8 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert length(first_user_cards) == 2
     assert length(second_user_cards) == 2
 
-    assert {:ok, state_three} = TableServer.join(room.id, user_three.id)
+    assert {:ok, _state_three} = TableServer.join(room.id, user_three.id)
+    assert {:ok, state_three} = TableServer.connect(room.id, user_three.id, make_ref())
     waiting_player = Enum.find(state_three.players, &(&1.user_id == user_three.id))
     assert waiting_player.in_hand == false
     assert waiting_player.cards == []
@@ -181,16 +187,16 @@ defmodule MicuPoker.Poker.TableServerTest do
     {:ok, spectator_room} = create_test_room(user_one, "Spectator On", true)
     assert {:ok, _pid} = TableSupervisor.ensure_table(spectator_room.id)
 
-    assert {:ok, _} = TableServer.join(spectator_room.id, user_one.id)
-    assert {:ok, _} = TableServer.join(spectator_room.id, user_two.id)
+    assert {:ok, _} = join_connected(spectator_room, user_one)
+    assert {:ok, _} = join_connected(spectator_room, user_two)
     assert {:spectator, spectator_state} = TableServer.join(spectator_room.id, user_three.id)
     refute Enum.any?(spectator_state.players, &(&1.user_id == user_three.id))
 
     {:ok, private_room} = create_test_room(user_one, "Spectator Off", false)
     assert {:ok, _pid} = TableSupervisor.ensure_table(private_room.id)
 
-    assert {:ok, _} = TableServer.join(private_room.id, user_one.id)
-    assert {:ok, _} = TableServer.join(private_room.id, user_two.id)
+    assert {:ok, _} = join_connected(private_room, user_one)
+    assert {:ok, _} = join_connected(private_room, user_two)
     assert {:error, :room_full} = TableServer.join(private_room.id, user_three.id)
   end
 
@@ -199,8 +205,8 @@ defmodule MicuPoker.Poker.TableServerTest do
     user_one: user_one,
     user_two: user_two
   } do
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
 
     assert :ok = TableServer.leave(room.id, user_one.id)
     [{pid, _value}] = Registry.lookup(MicuPoker.TableRegistry, room.id)
@@ -219,8 +225,8 @@ defmodule MicuPoker.Poker.TableServerTest do
     user_one: user_one,
     user_two: user_two
   } do
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
 
     acting_user_id =
       room.id
@@ -260,7 +266,7 @@ defmodule MicuPoker.Poker.TableServerTest do
   } do
     with_env("DISCONNECT_GRACE_SECONDS", "30")
 
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
     assert :ok = TableServer.disconnect(room.id, user_one.id)
 
     disconnected = TableServer.state(room.id, user_one.id)
@@ -268,16 +274,44 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert player.connected == false
     assert player.disconnect_deadline
 
-    assert {:ok, reconnected} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _state} = TableServer.join(room.id, user_one.id)
+    assert {:ok, reconnected} = TableServer.connect(room.id, user_one.id, make_ref())
     player = Enum.find(reconnected.players, &(&1.user_id == user_one.id))
     assert player.connected == true
     assert player.disconnect_deadline == nil
   end
 
+  test "disconnecting one of multiple connections keeps player connected", %{
+    room: room,
+    user_one: user_one
+  } do
+    with_env("DISCONNECT_GRACE_SECONDS", "30")
+
+    ref_one = make_ref()
+    ref_two = make_ref()
+
+    assert {:ok, _state_one} = join_connected(room, user_one, ref_one)
+    assert {:ok, _state_two} = TableServer.connect(room.id, user_one.id, ref_two)
+
+    assert :ok = TableServer.disconnect(room.id, user_one.id, ref_one)
+
+    still_connected = TableServer.state(room.id, user_one.id)
+    player = Enum.find(still_connected.players, &(&1.user_id == user_one.id))
+    assert player.connected == true
+    assert player.disconnect_deadline == nil
+
+    assert :ok = TableServer.disconnect(room.id, user_one.id, ref_two)
+
+    disconnected = TableServer.state(room.id, user_one.id)
+    player = Enum.find(disconnected.players, &(&1.user_id == user_one.id))
+    assert player.connected == false
+    assert player.disconnect_deadline
+  end
+
   test "disconnect grace expiry removes a waiting player", %{room: room, user_one: user_one} do
     with_env("DISCONNECT_GRACE_SECONDS", "0")
 
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
     assert :ok = TableServer.disconnect(room.id, user_one.id)
 
     Process.sleep(30)
@@ -289,7 +323,7 @@ defmodule MicuPoker.Poker.TableServerTest do
   test "rate limits table chat", %{room: room, user_one: user_one} do
     with_env("CHAT_RATE_LIMIT_MS", "5000")
 
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
     assert :ok = TableServer.chat(room.id, user_one.id, "hello")
     assert {:error, :rate_limited} = TableServer.chat(room.id, user_one.id, "too fast")
   end
@@ -301,8 +335,8 @@ defmodule MicuPoker.Poker.TableServerTest do
   } do
     with_env("ACTION_RATE_LIMIT_MS", "5000")
 
-    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
 
     state = TableServer.state(room.id)
     current = Enum.find(state.players, &(&1.seat_number == state.turn_seat))

@@ -28,6 +28,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Spectators and waiting players receive no action buttons and no private cards.
 - Disconnected seats are marked as reconnecting, expire after the configured grace period, and do not enter new hands while disconnected.
 - Manual leave during a hand folds the player, preserves their pot contribution through settlement, and prevents them from being seated in the next hand.
+- Player connection refs are tracked for LiveView and Channel sockets, so one closed tab cannot mark a still-connected player as disconnected.
 - A supervised room janitor completes stale rooms and marks stale seats as left without deleting hand history or ledger data.
 - Public pages and APIs no longer create guest users; only app routes create guests, and unused guests without room history are eligible for janitor cleanup.
 - Public room API reads are side-effect free and do not start table GenServers.
@@ -40,4 +41,4 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Guest identity is cookie/session based; persistent username/password accounts are not implemented.
 - Password-protected rooms are disabled in v1 and incoming room password values are ignored until full access control is implemented with a proper password hashing library.
 - Add automated browser-based mobile regression tests in CI if this project later gets CI infrastructure.
-- Add full Phoenix Presence or connection reference counting if multi-tab/device identity tracking becomes important.
+- Add full Phoenix Presence member listings if multi-device identity display becomes important.

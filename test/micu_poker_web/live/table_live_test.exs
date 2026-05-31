@@ -7,6 +7,11 @@ defmodule MicuPokerWeb.TableLiveTest do
   alias MicuPoker.Poker.TableServer
   alias MicuPoker.Rooms
 
+  defp join_connected(room, user) do
+    assert {:ok, _state} = TableServer.join(room.id, user.id)
+    TableServer.connect(room.id, user.id, make_ref())
+  end
+
   test "table page shows invite id and invite link", %{conn: conn} do
     {:ok, user} = Accounts.create_guest_user()
 
@@ -51,8 +56,8 @@ defmodule MicuPokerWeb.TableLiveTest do
       )
 
     start_supervised!({TableServer, room.id})
-    assert {:ok, _} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, _} = join_connected(room, user_two)
 
     conn =
       conn
@@ -92,8 +97,8 @@ defmodule MicuPokerWeb.TableLiveTest do
       )
 
     start_supervised!({TableServer, room.id})
-    assert {:ok, _} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, _} = join_connected(room, user_two)
 
     conn = Plug.Test.init_test_session(conn, guest_user_id: user_one.id)
     {:ok, _view, html} = live(conn, ~p"/rooms/#{room.id}")
@@ -129,8 +134,8 @@ defmodule MicuPokerWeb.TableLiveTest do
       )
 
     start_supervised!({TableServer, room.id})
-    assert {:ok, _} = TableServer.join(room.id, user_one.id)
-    assert {:ok, _} = TableServer.join(room.id, user_two.id)
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, _} = join_connected(room, user_two)
 
     conn = Plug.Test.init_test_session(conn, guest_user_id: user_three.id)
 

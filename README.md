@@ -14,6 +14,7 @@ This is play-money only. Chips are virtual demo chips with no real-world value. 
 - Table chat with message length validation.
 - Spectator-safe public table state: other players' private cards are hidden before showdown.
 - Configurable active-room capacity enforcement with `MAX_ROOMS`.
+- Connection reference tracking so one closed tab does not disconnect a player who is still connected elsewhere.
 - `/health`, JSON room/stats APIs, and `/docs`.
 
 ## Stack
@@ -151,7 +152,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 
 - Guest mode is used instead of email/password accounts.
 - Password-protected rooms are disabled in v1 until full access control is implemented.
-- Reconnect handling is session-based; multi-tab presence counting is not implemented yet.
+- Reconnect handling is session-based; full Phoenix Presence member listings are not implemented yet.
 
 ## Security And Fairness
 
@@ -162,6 +163,8 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Clients never receive other players' private cards before showdown.
 - Chat and display names are length/format constrained and HTML-escaped by Phoenix templates.
 - Chat and repeated action attempts are rate-limited server-side.
+- Only real LiveView/Channel connections mark a player connected; HTTP joins only reserve a seat.
+- Multiple LiveView/Channel connections for the same player are reference-counted, so closing one tab does not disconnect the player while another is still open.
 - Disconnects keep the seat reserved for `DISCONNECT_GRACE_SECONDS`; reconnecting restores the same seat, and expired waiting seats are removed.
 - Room metadata status is synchronized from live table state: empty rooms are complete, one connected player is waiting, and two or more connected players are active.
 - Finished hands update `room_players.stack` and write zero-sum `chip_ledger` entries for auditability.

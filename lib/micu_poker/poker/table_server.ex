@@ -58,7 +58,7 @@ defmodule MicuPoker.Poker.TableServer do
       valid_actions_fun: &__MODULE__.valid_actions/2
     }
 
-    {:ok, maybe_start_hand(state)}
+    {:ok, maybe_start_hand(state) |> sync_room_status()}
   end
 
   @impl true
@@ -76,6 +76,7 @@ defmodule MicuPoker.Poker.TableServer do
           |> cancel_disconnect_grace(user_id)
           |> add_log("Player joined the table.")
           |> maybe_start_hand()
+          |> sync_room_status()
 
         broadcast(new_state)
         {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
@@ -95,6 +96,7 @@ defmodule MicuPoker.Poker.TableServer do
       state
       |> cancel_disconnect_grace(user_id)
       |> remove_or_fold_player(user_id, "A player left the table.")
+      |> sync_room_status()
 
     broadcast(new_state)
     {:reply, :ok, new_state}
@@ -105,6 +107,7 @@ defmodule MicuPoker.Poker.TableServer do
       state
       |> schedule_disconnect_grace(user_id)
       |> add_log("A player left the table.")
+      |> sync_room_status()
 
     broadcast(new_state)
     {:reply, :ok, new_state}
@@ -169,6 +172,7 @@ defmodule MicuPoker.Poker.TableServer do
             Enum.filter(state.players, &(&1.stack > 0)) ++
               Enum.filter(state.players, &(&1.stack <= 0))
       })
+      |> sync_room_status()
 
     broadcast(new_state)
     {:noreply, new_state}
@@ -201,6 +205,7 @@ defmodule MicuPoker.Poker.TableServer do
           |> add_log("#{player.username} was removed after disconnect grace expired.")
           |> maybe_start_hand()
       end
+      |> sync_room_status()
 
     broadcast(new_state)
     {:noreply, new_state}
@@ -420,6 +425,7 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp maybe_start_hand(%{stage: stage} = state) when stage in [:waiting, :complete, :showdown] do
+    state = %{state | players: Enum.reject(state.players, &Map.get(&1, :leaving, false))}
     playable = Enum.filter(state.players, &(&1.connected && &1.stack > 0))
 
     if length(playable) >= 2 do
@@ -463,6 +469,7 @@ defmodule MicuPoker.Poker.TableServer do
             contribution_total: 0,
             connected: true,
             disconnect_deadline: nil,
+            leaving: false,
             in_hand: true
         }
       end)
@@ -510,7 +517,7 @@ defmodule MicuPoker.Poker.TableServer do
 
     %{state | turn_seat: Enum.at(players, turn_index).seat_number}
     |> schedule_timer()
-    |> tap(&Rooms.update_status(&1.room_id, "active"))
+    |> sync_room_status()
   end
 
   defp next_turn(state) do
@@ -714,7 +721,8 @@ defmodule MicuPoker.Poker.TableServer do
         all_in: false,
         in_hand: false,
         connected: true,
-        disconnect_deadline: nil
+        disconnect_deadline: nil,
+        leaving: false
       }
     end)
   end
@@ -814,7 +822,8 @@ defmodule MicuPoker.Poker.TableServer do
       %{in_hand: true, folded: false} = player ->
         state
         |> cancel_timer_if_turn(player)
-        |> commit_action(player, :fold, 0)
+        |> update_player(user_id, &%{&1 | connected: false, leaving: true})
+        |> commit_action(%{player | connected: false, leaving: true}, :fold, 0)
         |> record_action(player, :fold, 0, false)
         |> add_log(message)
         |> settle_or_advance()
@@ -824,6 +833,23 @@ defmodule MicuPoker.Poker.TableServer do
         |> remove_player(user_id)
         |> add_log(message)
         |> maybe_start_hand()
+    end
+  end
+
+  defp sync_room_status(state) do
+    status = room_status(state)
+    Rooms.update_status(state.room_id, status)
+
+    %{state | room: %{state.room | status: status}}
+  end
+
+  defp room_status(state) do
+    connected_count = Enum.count(state.players, &(&1.connected && !Map.get(&1, :leaving, false)))
+
+    cond do
+      connected_count == 0 -> "complete"
+      connected_count < 2 -> "waiting"
+      true -> "active"
     end
   end
 

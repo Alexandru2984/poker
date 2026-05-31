@@ -58,6 +58,23 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert state_two.pot == room.small_blind + room.big_blind
   end
 
+  test "room status follows table occupancy", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    assert Rooms.get_room!(room.id).status == "complete"
+
+    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert Rooms.get_room!(room.id).status == "waiting"
+
+    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+    assert Rooms.get_room!(room.id).status == "active"
+
+    assert :ok = TableServer.leave(room.id, user_one.id)
+    assert Rooms.get_room!(room.id).status == "waiting"
+  end
+
   test "each seated user sees only their own private cards before showdown", %{
     room: room,
     user_one: user_one,
@@ -152,6 +169,26 @@ defmodule MicuPoker.Poker.TableServerTest do
              second_user_cards
 
     assert Enum.find(after_join_one.players, &(&1.user_id == user_three.id)).cards == []
+  end
+
+  test "manual leave during a hand folds and does not re-seat the player next hand", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert {:ok, _state_two} = TableServer.join(room.id, user_two.id)
+
+    assert :ok = TableServer.leave(room.id, user_one.id)
+    [{pid, _value}] = Registry.lookup(MicuPoker.TableRegistry, room.id)
+    send(pid, :start_next_hand)
+
+    Process.sleep(30)
+
+    state = TableServer.state(room.id, user_two.id)
+    refute Enum.any?(state.players, &(&1.user_id == user_one.id))
+    assert Enum.any?(state.players, &(&1.user_id == user_two.id))
+    assert state.stage == :waiting
   end
 
   test "disconnect keeps a seat reserved and join reconnects it", %{

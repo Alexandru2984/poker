@@ -156,6 +156,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Chat and display names are length/format constrained and HTML-escaped by Phoenix templates.
 - Chat and repeated action attempts are rate-limited server-side.
 - Disconnects keep the seat reserved for `DISCONNECT_GRACE_SECONDS`; reconnecting restores the same seat, and expired waiting seats are removed.
+- Room metadata status is synchronized from live table state: empty rooms are complete, one connected player is waiting, and two or more connected players are active.
 - No shell commands are executed from web requests.
 - No secrets are exposed in frontend code, README, or public APIs.
 

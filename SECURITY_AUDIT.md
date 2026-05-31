@@ -25,6 +25,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - PubSub broadcasts are sanitized; LiveView and Channel clients fetch personalized table state server-side.
 - Spectators and waiting players receive no action buttons and no private cards.
 - Disconnected seats are marked as reconnecting, expire after the configured grace period, and do not enter new hands while disconnected.
+- Manual leave during a hand folds the player, preserves their pot contribution through settlement, and prevents them from being seated in the next hand.
 - No real-money gambling features exist.
 
 ## Remaining Risks / TODO

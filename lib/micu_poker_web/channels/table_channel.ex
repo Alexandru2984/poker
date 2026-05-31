@@ -35,6 +35,17 @@ defmodule MicuPokerWeb.TableChannel do
     {:noreply, socket}
   end
 
+  @impl true
+  def terminate(_reason, socket) do
+    if socket.assigns[:room_id] && socket.assigns[:user_id] do
+      TableServer.disconnect(socket.assigns.room_id, socket.assigns.user_id)
+    end
+
+    :ok
+  catch
+    :exit, _ -> :ok
+  end
+
   defp normalize_reply(:ok), do: {:ok, %{ok: true}}
   defp normalize_reply({:error, reason}), do: {:error, %{reason: to_string(reason)}}
 end

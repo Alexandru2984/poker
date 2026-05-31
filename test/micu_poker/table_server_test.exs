@@ -154,6 +154,38 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert Enum.find(after_join_one.players, &(&1.user_id == user_three.id)).cards == []
   end
 
+  test "disconnect keeps a seat reserved and join reconnects it", %{
+    room: room,
+    user_one: user_one
+  } do
+    with_env("DISCONNECT_GRACE_SECONDS", "30")
+
+    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert :ok = TableServer.disconnect(room.id, user_one.id)
+
+    disconnected = TableServer.state(room.id, user_one.id)
+    player = Enum.find(disconnected.players, &(&1.user_id == user_one.id))
+    assert player.connected == false
+    assert player.disconnect_deadline
+
+    assert {:ok, reconnected} = TableServer.join(room.id, user_one.id)
+    player = Enum.find(reconnected.players, &(&1.user_id == user_one.id))
+    assert player.connected == true
+    assert player.disconnect_deadline == nil
+  end
+
+  test "disconnect grace expiry removes a waiting player", %{room: room, user_one: user_one} do
+    with_env("DISCONNECT_GRACE_SECONDS", "0")
+
+    assert {:ok, _state_one} = TableServer.join(room.id, user_one.id)
+    assert :ok = TableServer.disconnect(room.id, user_one.id)
+
+    Process.sleep(30)
+
+    state = TableServer.state(room.id, user_one.id)
+    refute Enum.any?(state.players, &(&1.user_id == user_one.id))
+  end
+
   test "rate limits table chat", %{room: room, user_one: user_one} do
     with_env("CHAT_RATE_LIMIT_MS", "5000")
 

@@ -71,6 +71,17 @@ defmodule MicuPokerWeb.TableLive do
     {:noreply, assign(socket, :now, DateTime.utc_now(:second))}
   end
 
+  @impl true
+  def terminate(_reason, socket) do
+    if socket.assigns[:room_id] && socket.assigns[:current_user] do
+      TableServer.disconnect(socket.assigns.room_id, socket.assigns.current_user.id)
+    end
+
+    :ok
+  catch
+    :exit, _ -> :ok
+  end
+
   defp action?(table, action), do: action in table.valid_actions.actions
 
   defp current_player(table, user_id), do: Enum.find(table.players, &(&1.user_id == user_id))

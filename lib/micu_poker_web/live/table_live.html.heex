@@ -85,6 +85,9 @@
           <%= if player.all_in do %>
             <div class="seat-state">All-in</div>
           <% end %>
+          <%= if !player.connected do %>
+            <div class="seat-state">Reconnecting</div>
+          <% end %>
           <%= if !player.in_hand do %>
             <div class="seat-state">Waiting next hand</div>
           <% end %>

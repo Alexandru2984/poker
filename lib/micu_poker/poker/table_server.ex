@@ -17,6 +17,7 @@ defmodule MicuPoker.Poker.TableServer do
   def via(room_id), do: {:via, Registry, {MicuPoker.TableRegistry, room_id}}
 
   def join(room_id, user_id), do: GenServer.call(via(room_id), {:join, user_id})
+  def disconnect(room_id, user_id), do: GenServer.call(via(room_id), {:disconnect, user_id})
   def leave(room_id, user_id), do: GenServer.call(via(room_id), {:leave, user_id})
   def state(room_id, viewer_id \\ nil), do: GenServer.call(via(room_id), {:state, viewer_id})
 
@@ -50,6 +51,7 @@ defmodule MicuPoker.Poker.TableServer do
       acted: MapSet.new(),
       action_deadline: nil,
       timer_ref: nil,
+      disconnect_timers: %{},
       rate_limits: %{chat: %{}, action: %{}},
       log: ["MicuPoker table opened. Play-money chips only; no real-world value."],
       chat: [],
@@ -71,6 +73,7 @@ defmodule MicuPoker.Poker.TableServer do
             | players: merge_seated_players(state.players, load_players(state.room_id)),
               room: Rooms.get_room!(state.room_id)
           }
+          |> cancel_disconnect_grace(user_id)
           |> add_log("Player joined the table.")
           |> maybe_start_hand()
 
@@ -89,7 +92,18 @@ defmodule MicuPoker.Poker.TableServer do
     Rooms.leave_room(state.room_id, user_id)
 
     new_state =
-      update_player(state, user_id, fn player -> %{player | connected: false} end)
+      state
+      |> cancel_disconnect_grace(user_id)
+      |> remove_or_fold_player(user_id, "A player left the table.")
+
+    broadcast(new_state)
+    {:reply, :ok, new_state}
+  end
+
+  def handle_call({:disconnect, user_id}, _from, state) do
+    new_state =
+      state
+      |> schedule_disconnect_grace(user_id)
       |> add_log("A player left the table.")
 
     broadcast(new_state)
@@ -155,6 +169,38 @@ defmodule MicuPoker.Poker.TableServer do
             Enum.filter(state.players, &(&1.stack > 0)) ++
               Enum.filter(state.players, &(&1.stack <= 0))
       })
+
+    broadcast(new_state)
+    {:noreply, new_state}
+  end
+
+  def handle_info({:disconnect_grace_expired, user_id}, state) do
+    state = %{state | disconnect_timers: Map.delete(state.disconnect_timers, user_id)}
+
+    new_state =
+      case Enum.find(state.players, &(&1.user_id == user_id)) do
+        nil ->
+          state
+
+        %{connected: true} ->
+          state
+
+        %{in_hand: true, folded: false} = player ->
+          state
+          |> cancel_timer_if_turn(player)
+          |> commit_action(player, :fold, 0)
+          |> record_action(player, :fold, 0, true)
+          |> add_log("#{player.username} was folded after disconnect grace expired.")
+          |> settle_or_advance()
+
+        player ->
+          Rooms.leave_room(state.room_id, user_id)
+
+          state
+          |> remove_player(user_id)
+          |> add_log("#{player.username} was removed after disconnect grace expired.")
+          |> maybe_start_hand()
+      end
 
     broadcast(new_state)
     {:noreply, new_state}
@@ -382,10 +428,13 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp maybe_start_hand(%{stage: stage} = state) when stage in [:waiting, :complete, :showdown] do
-    playable = Enum.filter(state.players, &(&1.stack > 0))
+    playable = Enum.filter(state.players, &(&1.connected && &1.stack > 0))
 
     if length(playable) >= 2 do
-      start_hand(%{state | players: playable ++ Enum.reject(state.players, &(&1.stack > 0))})
+      start_hand(%{
+        state
+        | players: playable ++ Enum.reject(state.players, &(&1.connected && &1.stack > 0))
+      })
     else
       %{state | stage: :waiting, turn_seat: nil, action_deadline: nil}
     end
@@ -394,8 +443,16 @@ defmodule MicuPoker.Poker.TableServer do
   defp maybe_start_hand(state), do: state
 
   defp start_hand(state) do
-    players = state.players |> Enum.filter(&(&1.stack > 0)) |> Enum.sort_by(& &1.seat_number)
-    out_players = state.players |> Enum.reject(&(&1.stack > 0)) |> Enum.sort_by(& &1.seat_number)
+    players =
+      state.players
+      |> Enum.filter(&(&1.connected && &1.stack > 0))
+      |> Enum.sort_by(& &1.seat_number)
+
+    out_players =
+      state.players
+      |> Enum.reject(&(&1.connected && &1.stack > 0))
+      |> Enum.sort_by(& &1.seat_number)
+
     deck = Deck.shuffle()
     {hole_cards, deck} = Deck.deal(deck, length(players) * 2)
 
@@ -412,6 +469,7 @@ defmodule MicuPoker.Poker.TableServer do
             all_in: false,
             bet: 0,
             connected: true,
+            disconnect_deadline: nil,
             in_hand: true
         }
       end)
@@ -631,6 +689,10 @@ defmodule MicuPoker.Poker.TableServer do
     %{state | timer_ref: nil}
   end
 
+  defp cancel_timer_if_turn(state, player) do
+    if state.turn_seat == player.seat_number, do: cancel_timer(state), else: state
+  end
+
   defp load_players(room_id) do
     room_id
     |> Rooms.list_players()
@@ -645,7 +707,8 @@ defmodule MicuPoker.Poker.TableServer do
         folded: false,
         all_in: false,
         in_hand: false,
-        connected: true
+        connected: true,
+        disconnect_deadline: nil
       }
     end)
   end
@@ -705,6 +768,62 @@ defmodule MicuPoker.Poker.TableServer do
 
   defp rate_limit_interval(:action),
     do: System.get_env("ACTION_RATE_LIMIT_MS", "400") |> String.to_integer()
+
+  defp schedule_disconnect_grace(state, user_id) do
+    case Enum.find(state.players, &(&1.user_id == user_id)) do
+      nil ->
+        state
+
+      _player ->
+        state = cancel_disconnect_grace(state, user_id)
+        seconds = System.get_env("DISCONNECT_GRACE_SECONDS", "60") |> String.to_integer()
+        ref = Process.send_after(self(), {:disconnect_grace_expired, user_id}, seconds * 1_000)
+        deadline = DateTime.add(DateTime.utc_now(:second), seconds, :second)
+
+        state
+        |> Map.update!(:disconnect_timers, &Map.put(&1, user_id, ref))
+        |> update_player(user_id, &%{&1 | connected: false, disconnect_deadline: deadline})
+    end
+  end
+
+  defp cancel_disconnect_grace(state, user_id) do
+    case Map.pop(state.disconnect_timers, user_id) do
+      {nil, _timers} ->
+        update_player(state, user_id, &%{&1 | connected: true, disconnect_deadline: nil})
+
+      {ref, timers} ->
+        Process.cancel_timer(ref)
+
+        state
+        |> Map.put(:disconnect_timers, timers)
+        |> update_player(user_id, &%{&1 | connected: true, disconnect_deadline: nil})
+    end
+  end
+
+  defp remove_or_fold_player(state, user_id, message) do
+    case Enum.find(state.players, &(&1.user_id == user_id)) do
+      nil ->
+        state
+
+      %{in_hand: true, folded: false} = player ->
+        state
+        |> cancel_timer_if_turn(player)
+        |> commit_action(player, :fold, 0)
+        |> record_action(player, :fold, 0, false)
+        |> add_log(message)
+        |> settle_or_advance()
+
+      _player ->
+        state
+        |> remove_player(user_id)
+        |> add_log(message)
+        |> maybe_start_hand()
+    end
+  end
+
+  defp remove_player(state, user_id) do
+    %{state | players: Enum.reject(state.players, &(&1.user_id == user_id))}
+  end
 
   defp normalize_action(action) when is_atom(action), do: action
 

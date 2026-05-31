@@ -12,6 +12,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Added hand summaries, board texture hints, and best-five display so pairs, flushes, straights, and stronger made hands are visible to the correct player.
 - Added tests for multi-user card isolation, late-join behavior, mobile layout guardrails, hand summaries, signed socket tokens, and socket impersonation rejection.
 - Disabled Erlang distribution in systemd so the release no longer opens a random BEAM listener on `0.0.0.0`.
+- Added server-side chat/action rate limits and disconnect grace handling for LiveView and Channel clients.
 
 ## Current Protections
 
@@ -21,6 +22,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - The server owns deck, hole cards, turns, legal actions, pot state, and winner calculation.
 - PubSub broadcasts are sanitized; LiveView and Channel clients fetch personalized table state server-side.
 - Spectators and waiting players receive no action buttons and no private cards.
+- Disconnected seats are marked as reconnecting, expire after the configured grace period, and do not enter new hands while disconnected.
 - No real-money gambling features exist.
 
 ## Remaining Risks / TODO
@@ -28,5 +30,5 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Full multiplayer side-pot accounting is not implemented yet.
 - Guest identity is cookie/session based; persistent username/password accounts are not implemented.
 - Password-protected rooms are disabled in v1 and incoming room password values are ignored until full access control is implemented with a proper password hashing library.
-- Add per-user chat/action rate limiting before larger public use.
 - Add automated browser-based mobile regression tests in CI if this project later gets CI infrastructure.
+- Add full Phoenix Presence or connection reference counting if multi-tab/device identity tracking becomes important.

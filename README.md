@@ -145,7 +145,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Full multi-player side-pot logic is not implemented in v1. Heads-up all-in is supported; larger all-in side pots are documented TODO and not silently claimed as complete.
 - Guest mode is used instead of email/password accounts.
 - Password-protected rooms are disabled in v1 until full access control is implemented.
-- Disconnect grace is configured, but v1 reconnect handling is basic.
+- Reconnect handling is session-based; multi-tab presence counting is not implemented yet.
 
 ## Security And Fairness
 
@@ -156,6 +156,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Clients never receive other players' private cards before showdown.
 - Chat and display names are length/format constrained and HTML-escaped by Phoenix templates.
 - Chat and repeated action attempts are rate-limited server-side.
+- Disconnects keep the seat reserved for `DISCONNECT_GRACE_SECONDS`; reconnecting restores the same seat, and expired waiting seats are removed.
 - No shell commands are executed from web requests.
 - No secrets are exposed in frontend code, README, or public APIs.
 

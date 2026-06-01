@@ -6,9 +6,19 @@ defmodule MicuPokerWeb.TableLive do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    room = Rooms.get_room!(id)
-    {:ok, _pid} = TableSupervisor.ensure_table(room.id)
+    with {:ok, room} <- Rooms.fetch_room(id),
+         {:ok, _pid} <- TableSupervisor.ensure_table(room.id) do
+      join_table(socket, room)
+    else
+      _error ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Table was not found.")
+         |> push_navigate(to: ~p"/lobby")}
+    end
+  end
 
+  defp join_table(socket, room) do
     case TableServer.join(room.id, socket.assigns.current_user.id) do
       {:ok, table} ->
         mount_table(socket, room, table)

@@ -17,9 +17,18 @@ defmodule MicuPokerWeb.RoomController do
   end
 
   def join(conn, %{"id" => id}) do
-    room = Rooms.get_room!(id)
-    {:ok, _pid} = TableSupervisor.ensure_table(room.id)
+    with {:ok, room} <- Rooms.fetch_room(id),
+         {:ok, _pid} <- TableSupervisor.ensure_table(room.id) do
+      join_room(conn, room)
+    else
+      _error ->
+        conn
+        |> put_flash(:error, "Table was not found.")
+        |> redirect(to: ~p"/lobby")
+    end
+  end
 
+  defp join_room(conn, room) do
     case TableServer.join(room.id, conn.assigns.current_user.id) do
       {:ok, _state} ->
         redirect(conn, to: ~p"/rooms/#{room.id}")
@@ -40,8 +49,11 @@ defmodule MicuPokerWeb.RoomController do
   end
 
   def leave(conn, %{"id" => id}) do
-    {:ok, _pid} = TableSupervisor.ensure_table(String.to_integer(id))
-    TableServer.leave(String.to_integer(id), conn.assigns.current_user.id)
+    with {:ok, room} <- Rooms.fetch_room(id),
+         {:ok, _pid} <- TableSupervisor.ensure_table(room.id) do
+      TableServer.leave(room.id, conn.assigns.current_user.id)
+    end
+
     redirect(conn, to: ~p"/lobby")
   end
 

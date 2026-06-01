@@ -38,6 +38,16 @@ defmodule MicuPokerWeb.TableLiveTest do
     assert html =~ "/rooms/#{room.id}"
   end
 
+  test "table page redirects invalid room ids to lobby", %{conn: conn} do
+    {:ok, user} = Accounts.create_guest_user()
+    conn = Plug.Test.init_test_session(conn, guest_user_id: user.id)
+
+    assert {:error, {:live_redirect, %{to: "/lobby", flash: flash}}} =
+             live(conn, ~p"/rooms/not-a-number")
+
+    assert flash["error"] == "Table was not found."
+  end
+
   test "mobile table view shows a late joiner as waiting instead of corrupting the hand", %{
     conn: conn
   } do

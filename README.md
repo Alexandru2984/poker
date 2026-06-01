@@ -172,6 +172,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Room defaults use `DEFAULT_STARTING_CHIPS`, `DEFAULT_SMALL_BLIND`, `DEFAULT_BIG_BLIND`, and `MAX_PLAYERS_PER_ROOM`; blinds are rejected if the big blind is larger than the starting stack.
 - Chat and repeated action attempts are rate-limited server-side.
 - Players marked disconnected cannot manually chat or act until they reconnect; server timeout actions still run authoritatively.
+- LiveView bet/raise input is normalized to the current server-provided valid range before action submission.
 - Only real LiveView/Channel connections mark a player connected; HTTP joins only reserve a seat.
 - Multiple LiveView/Channel connections for the same player are reference-counted, so closing one tab does not disconnect the player while another is still open.
 - Disconnects keep the seat reserved for `DISCONNECT_GRACE_SECONDS`; reconnecting restores the same seat, and expired waiting seats are removed.

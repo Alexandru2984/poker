@@ -127,6 +127,47 @@ defmodule MicuPokerWeb.TableLiveTest do
     end
   end
 
+  test "bet amount input is clamped to valid action range", %{conn: conn} do
+    {:ok, user_one} = Accounts.create_guest_user()
+    {:ok, user_two} = Accounts.create_guest_user()
+
+    {:ok, room} =
+      Rooms.create_room(
+        %{
+          "name" => "Bet Clamp Test",
+          "max_players" => "2",
+          "small_blind" => "5",
+          "big_blind" => "10",
+          "starting_chips" => "1000"
+        },
+        user_one.id
+      )
+
+    start_supervised!({TableServer, room.id})
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, _} = join_connected(room, user_two)
+
+    acting_user =
+      Enum.find([user_one, user_two], fn user ->
+        TableServer.state(room.id, user.id).valid_actions.actions != []
+      end)
+
+    conn = Plug.Test.init_test_session(conn, guest_user_id: acting_user.id)
+    {:ok, view, _html} = live(conn, ~p"/rooms/#{room.id}")
+
+    table = TableServer.state(room.id, acting_user.id)
+    min_amount = table.valid_actions.min_raise_to
+    max_amount = table.valid_actions.max_total_bet
+
+    assert render_change(view, :bet_amount, %{"amount" => "-10"}) =~ ~s(value="#{min_amount}")
+
+    assert render_change(view, :bet_amount, %{"amount" => "not-a-number"}) =~
+             ~s(value="#{min_amount}")
+
+    assert render_change(view, :bet_amount, %{"amount" => "#{max_amount + 1}"}) =~
+             ~s(value="#{max_amount}")
+  end
+
   test "full room with spectators disabled redirects late viewers to lobby", %{conn: conn} do
     {:ok, user_one} = Accounts.create_guest_user()
     {:ok, user_two} = Accounts.create_guest_user()

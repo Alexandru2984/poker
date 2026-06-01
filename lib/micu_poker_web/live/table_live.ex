@@ -71,7 +71,7 @@ defmodule MicuPokerWeb.TableLive do
      |> assign(:invite_url, MicuPokerWeb.Endpoint.url() <> ~p"/rooms/#{room.id}")
      |> assign(:table, table)
      |> assign(:now, DateTime.utc_now(:second))
-     |> assign(:bet_amount, table.valid_actions[:min_bet] || room.big_blind)
+     |> assign(:bet_amount, default_bet_amount(table, room))
      |> assign(:chat_message, "")}
   end
 
@@ -94,6 +94,7 @@ defmodule MicuPokerWeb.TableLive do
   end
 
   def handle_event("bet_amount", %{"amount" => amount}, socket) do
+    amount = clamp_bet_amount(amount, socket.assigns.table, socket.assigns.room)
     {:noreply, assign(socket, :bet_amount, amount)}
   end
 
@@ -176,4 +177,33 @@ defmodule MicuPokerWeb.TableLive do
   defp human_error(:empty_message), do: "message is empty"
   defp human_error(:rate_limited), do: "slow down"
   defp human_error(reason), do: to_string(reason)
+
+  defp default_bet_amount(table, room) do
+    clamp_bet_amount(
+      table.valid_actions[:min_raise_to] || table.valid_actions[:min_bet],
+      table,
+      room
+    )
+  end
+
+  defp clamp_bet_amount(amount, table, room) do
+    min_amount =
+      table.valid_actions[:min_raise_to] || table.valid_actions[:min_bet] || room.big_blind
+
+    max_amount = table.valid_actions[:max_total_bet] || min_amount
+
+    amount
+    |> parse_amount(min_amount)
+    |> min(max_amount)
+    |> max(min_amount)
+  end
+
+  defp parse_amount(amount, _default) when is_integer(amount), do: amount
+
+  defp parse_amount(amount, default) do
+    case Integer.parse(to_string(amount)) do
+      {value, ""} -> value
+      _ -> default
+    end
+  end
 end

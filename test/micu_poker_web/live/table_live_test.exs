@@ -12,6 +12,8 @@ defmodule MicuPokerWeb.TableLiveTest do
     TableServer.connect(room.id, user.id, make_ref())
   end
 
+  defp own_player(view), do: Enum.find(view.players, &Map.get(&1, :is_me, false))
+
   test "table page shows invite id and invite link", %{conn: conn} do
     {:ok, user} = Accounts.create_guest_user()
 
@@ -75,9 +77,9 @@ defmodule MicuPokerWeb.TableLiveTest do
     assert html =~ "Table ##{room.id}"
 
     view_one = TableServer.state(room.id, user_one.id)
-    assert Enum.find(view_one.players, &(&1.user_id == user_one.id)).cards |> length() == 2
-    assert Enum.find(view_one.players, &(&1.user_id == user_two.id)).cards |> length() == 2
-    assert Enum.find(view_one.players, &(&1.user_id == user_three.id)).cards == []
+    assert own_player(view_one).cards |> length() == 2
+    assert Enum.any?(view_one.players, &(&1.cards == [%{hidden: true}, %{hidden: true}]))
+    assert Enum.any?(view_one.players, &(&1.cards == [] and &1.in_hand == false))
   end
 
   test "player table view includes an explicit own-hand panel", %{conn: conn} do
@@ -104,7 +106,7 @@ defmodule MicuPokerWeb.TableLiveTest do
     {:ok, _view, html} = live(conn, ~p"/rooms/#{room.id}")
 
     user_one_view = TableServer.state(room.id, user_one.id)
-    own_cards = Enum.find(user_one_view.players, &(&1.user_id == user_one.id)).cards
+    own_cards = own_player(user_one_view).cards
 
     assert html =~ "Your Hand"
     assert length(own_cards) == 2

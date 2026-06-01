@@ -27,6 +27,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Folded/uncontested hands keep private cards hidden from spectators and public API responses; only actual showdown reveals remaining hands.
 - Stack persistence and chip ledger writes happen with finished-hand updates in one database transaction.
 - PubSub broadcasts are sanitized; LiveView and Channel clients fetch personalized table state server-side.
+- Sanitized table state exposes the internal `user_id` only for the current viewer, not for opponents or anonymous API callers.
 - Spectators and waiting players receive no action buttons and no private cards.
 - Disconnected seats are marked as reconnecting, expire after the configured grace period, and do not enter new hands while disconnected.
 - Manual leave during a hand folds the player, preserves their pot contribution through settlement, and prevents them from being seated in the next hand.

@@ -41,13 +41,21 @@ defmodule MicuPoker.Poker.TableState do
   end
 
   defp player_public(player, state, viewer_id) do
+    is_me? = player.user_id == viewer_id
+
     show_cards? =
-      player.user_id == viewer_id or
+      is_me? or
         state.stage == :showdown or
         (state.stage == :waiting and player.cards == [])
 
+    player
+    |> public_player_fields(show_cards?, state.board)
+    |> maybe_put_user_id(player.user_id, is_me?)
+    |> Map.put(:is_me, is_me?)
+  end
+
+  defp public_player_fields(player, show_cards?, board) do
     %{
-      user_id: player.user_id,
       username: player.username,
       seat_number: player.seat_number,
       stack: player.stack,
@@ -57,15 +65,16 @@ defmodule MicuPoker.Poker.TableState do
       in_hand: player.in_hand,
       connected: player.connected,
       disconnect_deadline: player.disconnect_deadline,
-      hand_summary:
-        if(show_cards?, do: HandSummary.summarize(player.cards, state.board), else: nil),
-      cards:
-        if(show_cards?,
-          do: Enum.map(player.cards, &Card.public/1),
-          else: Enum.map(player.cards, fn _ -> %{hidden: true} end)
-        )
+      hand_summary: if(show_cards?, do: HandSummary.summarize(player.cards, board), else: nil),
+      cards: public_cards(player.cards, show_cards?)
     }
   end
+
+  defp public_cards(cards, true), do: Enum.map(cards, &Card.public/1)
+  defp public_cards(cards, false), do: Enum.map(cards, fn _ -> %{hidden: true} end)
+
+  defp maybe_put_user_id(fields, user_id, true), do: Map.put(fields, :user_id, user_id)
+  defp maybe_put_user_id(fields, _user_id, false), do: fields
 
   defp valid_actions_for_viewer(_state, nil), do: %{actions: []}
 

@@ -33,7 +33,7 @@ defmodule MicuPokerWeb.TableLive do
   defp mount_table(socket, room, table) do
     connection_ref =
       if connected?(socket) and
-           Enum.any?(table.players, &(&1.user_id == socket.assigns.current_user.id)) do
+           Enum.any?(table.players, &Map.get(&1, :is_me, false)) do
         make_ref()
       end
 
@@ -130,7 +130,7 @@ defmodule MicuPokerWeb.TableLive do
 
   defp action?(table, action), do: action in table.valid_actions.actions
 
-  defp current_player(table, user_id), do: Enum.find(table.players, &(&1.user_id == user_id))
+  defp current_player(table, _user_id), do: Enum.find(table.players, &Map.get(&1, :is_me, false))
 
   defp my_turn?(table, user_id) do
     case current_player(table, user_id) do

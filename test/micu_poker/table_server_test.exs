@@ -43,6 +43,23 @@ defmodule MicuPoker.Poker.TableServerTest do
     TableServer.connect(room.id, user.id, ref)
   end
 
+  defp own_player(view), do: Enum.find(view.players, &Map.get(&1, :is_me, false))
+
+  defp other_players(view), do: Enum.reject(view.players, &Map.get(&1, :is_me, false))
+
+  defp acting_user_id(room, users) do
+    users
+    |> Enum.find(fn user -> TableServer.state(room.id, user.id).valid_actions.actions != [] end)
+    |> Map.fetch!(:id)
+  end
+
+  defp player_stack(room, user) do
+    room.id
+    |> TableServer.state(user.id)
+    |> own_player()
+    |> Map.fetch!(:stack)
+  end
+
   test "separate users can sit at the same table and start a hand", %{
     room: room,
     user_one: user_one,
@@ -58,8 +75,8 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert state_two.stage == :preflop
     assert length(state_two.players) == 2
 
-    assert Enum.map(state_two.players, & &1.user_id) |> Enum.sort() ==
-             Enum.sort([user_one.id, user_two.id])
+    assert own_player(state_two).user_id == user_two.id
+    assert Enum.all?(other_players(state_two), &(not Map.has_key?(&1, :user_id)))
 
     assert Enum.map(state_two.players, & &1.seat_number) |> Enum.sort() == [1, 2]
     assert state_two.pot == room.small_blind + room.big_blind
@@ -93,13 +110,15 @@ defmodule MicuPoker.Poker.TableServerTest do
     view_one = TableServer.state(room.id, user_one.id)
     view_two = TableServer.state(room.id, user_two.id)
 
-    user_one_in_view_one = Enum.find(view_one.players, &(&1.user_id == user_one.id))
-    user_two_in_view_one = Enum.find(view_one.players, &(&1.user_id == user_two.id))
-    user_one_in_view_two = Enum.find(view_two.players, &(&1.user_id == user_one.id))
-    user_two_in_view_two = Enum.find(view_two.players, &(&1.user_id == user_two.id))
+    user_one_in_view_one = own_player(view_one)
+    user_two_in_view_one = other_players(view_one) |> List.first()
+    user_one_in_view_two = other_players(view_two) |> List.first()
+    user_two_in_view_two = own_player(view_two)
 
     assert length(user_one_in_view_one.cards) == 2
     assert Enum.all?(user_one_in_view_one.cards, &Map.has_key?(&1, :label))
+    assert user_one_in_view_one.user_id == user_one.id
+    refute Map.has_key?(user_two_in_view_one, :user_id)
 
     assert user_one_in_view_one.hand_summary.title in [
              "High card",
@@ -114,8 +133,10 @@ defmodule MicuPoker.Poker.TableServerTest do
 
     assert Enum.all?(user_one_in_view_two.cards, &(&1 == %{hidden: true}))
     assert user_one_in_view_two.hand_summary == nil
+    refute Map.has_key?(user_one_in_view_two, :user_id)
     assert length(user_two_in_view_two.cards) == 2
     assert Enum.all?(user_two_in_view_two.cards, &Map.has_key?(&1, :label))
+    assert user_two_in_view_two.user_id == user_two.id
 
     assert user_two_in_view_two.hand_summary.title in [
              "High card",
@@ -135,12 +156,7 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert {:ok, _state_one} = join_connected(room, user_one)
     assert {:ok, _state_two} = join_connected(room, user_two)
 
-    acting_user_id =
-      room.id
-      |> TableServer.state()
-      |> then(fn state ->
-        Enum.find(state.players, &(&1.seat_number == state.turn_seat)).user_id
-      end)
+    acting_user_id = acting_user_id(room, [user_one, user_two])
 
     assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
 
@@ -157,7 +173,7 @@ defmodule MicuPoker.Poker.TableServerTest do
     end
 
     acting_view = TableServer.state(room.id, acting_user_id)
-    acting_player = Enum.find(acting_view.players, &(&1.user_id == acting_user_id))
+    acting_player = own_player(acting_view)
     assert length(acting_player.cards) == 2
     assert Enum.all?(acting_player.cards, &Map.has_key?(&1, :label))
   end
@@ -190,15 +206,15 @@ defmodule MicuPoker.Poker.TableServerTest do
 
     before_join_one = TableServer.state(room.id, user_one.id)
     before_join_two = TableServer.state(room.id, user_two.id)
-    first_user_cards = Enum.find(before_join_one.players, &(&1.user_id == user_one.id)).cards
-    second_user_cards = Enum.find(before_join_two.players, &(&1.user_id == user_two.id)).cards
+    first_user_cards = own_player(before_join_one).cards
+    second_user_cards = own_player(before_join_two).cards
 
     assert length(first_user_cards) == 2
     assert length(second_user_cards) == 2
 
     assert {:ok, _state_three} = TableServer.join(room.id, user_three.id)
     assert {:ok, state_three} = TableServer.connect(room.id, user_three.id, make_ref())
-    waiting_player = Enum.find(state_three.players, &(&1.user_id == user_three.id))
+    waiting_player = own_player(state_three)
     assert waiting_player.in_hand == false
     assert waiting_player.cards == []
     assert state_three.valid_actions.actions == []
@@ -206,13 +222,11 @@ defmodule MicuPoker.Poker.TableServerTest do
     after_join_one = TableServer.state(room.id, user_one.id)
     after_join_two = TableServer.state(room.id, user_two.id)
 
-    assert Enum.find(after_join_one.players, &(&1.user_id == user_one.id)).cards ==
-             first_user_cards
+    assert own_player(after_join_one).cards == first_user_cards
 
-    assert Enum.find(after_join_two.players, &(&1.user_id == user_two.id)).cards ==
-             second_user_cards
+    assert own_player(after_join_two).cards == second_user_cards
 
-    assert Enum.find(after_join_one.players, &(&1.user_id == user_three.id)).cards == []
+    assert Enum.any?(after_join_one.players, &(&1.cards == [] and &1.in_hand == false))
   end
 
   test "full rooms allow spectators only when spectator mode is enabled", %{
@@ -226,7 +240,7 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert {:ok, _} = join_connected(spectator_room, user_one)
     assert {:ok, _} = join_connected(spectator_room, user_two)
     assert {:spectator, spectator_state} = TableServer.join(spectator_room.id, user_three.id)
-    refute Enum.any?(spectator_state.players, &(&1.user_id == user_three.id))
+    refute Enum.any?(spectator_state.players, &Map.get(&1, :is_me, false))
 
     {:ok, private_room} = create_test_room(user_one, "Spectator Off", false)
     assert {:ok, _pid} = TableSupervisor.ensure_table(private_room.id)
@@ -251,8 +265,8 @@ defmodule MicuPoker.Poker.TableServerTest do
     Process.sleep(30)
 
     state = TableServer.state(room.id, user_two.id)
-    refute Enum.any?(state.players, &(&1.user_id == user_one.id))
-    assert Enum.any?(state.players, &(&1.user_id == user_two.id))
+    assert own_player(state).user_id == user_two.id
+    assert Enum.all?(other_players(state), &(not Map.has_key?(&1, :user_id)))
     assert state.stage == :waiting
   end
 
@@ -264,12 +278,7 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert {:ok, _state_one} = join_connected(room, user_one)
     assert {:ok, _state_two} = join_connected(room, user_two)
 
-    acting_user_id =
-      room.id
-      |> TableServer.state()
-      |> then(fn state ->
-        Enum.find(state.players, &(&1.seat_number == state.turn_seat)).user_id
-      end)
+    acting_user_id = acting_user_id(room, [user_one, user_two])
 
     assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
 
@@ -279,7 +288,9 @@ defmodule MicuPoker.Poker.TableServerTest do
       |> Enum.filter(&(&1.room_id == room.id))
       |> Map.new(&{&1.user_id, &1.stack})
 
-    in_memory_players = TableServer.state(room.id).players |> Map.new(&{&1.user_id, &1.stack})
+    in_memory_players =
+      Map.new([user_one, user_two], fn user -> {user.id, player_stack(room, user)} end)
+
     assert persisted_players == in_memory_players
 
     hand = Repo.one!(Hand)
@@ -306,12 +317,7 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert {:ok, _state_one} = join_connected(room, user_one)
     assert {:ok, _state_two} = join_connected(room, user_two)
 
-    acting_user_id =
-      room.id
-      |> TableServer.state()
-      |> then(fn state ->
-        Enum.find(state.players, &(&1.seat_number == state.turn_seat)).user_id
-      end)
+    acting_user_id = acting_user_id(room, [user_one, user_two])
 
     assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
     assert TableServer.state(room.id).stage == :complete
@@ -380,7 +386,7 @@ defmodule MicuPoker.Poker.TableServerTest do
     Process.sleep(30)
 
     state = TableServer.state(room.id, user_one.id)
-    refute Enum.any?(state.players, &(&1.user_id == user_one.id))
+    refute Enum.any?(state.players, &Map.get(&1, :is_me, false))
   end
 
   test "rate limits table chat", %{room: room, user_one: user_one} do
@@ -414,11 +420,10 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert {:ok, _state_one} = join_connected(room, user_one)
     assert {:ok, _state_two} = join_connected(room, user_two)
 
-    state = TableServer.state(room.id)
-    current = Enum.find(state.players, &(&1.seat_number == state.turn_seat))
+    current_user_id = acting_user_id(room, [user_one, user_two])
 
-    assert {:error, :invalid_action} = TableServer.act(room.id, current.user_id, "bogus", 0)
-    assert {:error, :rate_limited} = TableServer.act(room.id, current.user_id, "fold", 0)
+    assert {:error, :invalid_action} = TableServer.act(room.id, current_user_id, "bogus", 0)
+    assert {:error, :rate_limited} = TableServer.act(room.id, current_user_id, "fold", 0)
   end
 
   defp create_test_room(user, name, spectator_enabled) do

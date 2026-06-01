@@ -13,6 +13,7 @@ This is play-money only. Chips are virtual demo chips with no real-world value. 
 - Real card faces with suit symbols, own-hand summaries, board texture hints, and best-five display after enough board cards.
 - Table chat with explicit empty-message and max-length rejection.
 - Spectator-safe public table state: other players' private cards are hidden before showdown.
+- Sanitized table state exposes `user_id` only for the current viewer; other players are identified by seat/display name and `is_me`.
 - Folded/uncontested hands do not reveal private cards; only real showdowns expose all remaining hole cards.
 - Configurable active-room capacity enforcement with `MAX_ROOMS`.
 - Connection reference tracking so one closed tab does not disconnect a player who is still connected elsewhere.
@@ -163,6 +164,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Nginx adds security headers and proxies WebSockets.
 - The server owns deck, cards, turns, pot, stacks, and winners.
 - Clients never receive other players' private cards before showdown.
+- Clients and public APIs do not receive other players' internal user IDs in sanitized table state.
 - Uncontested pots keep folded private cards hidden from spectators, public APIs, and other players.
 - Chat and display names are length/format constrained and HTML-escaped by Phoenix templates; oversized chat messages are rejected instead of silently truncated.
 - Room defaults use `DEFAULT_STARTING_CHIPS`, `DEFAULT_SMALL_BLIND`, `DEFAULT_BIG_BLIND`, and `MAX_PLAYERS_PER_ROOM`; blinds are rejected if the big blind is larger than the starting stack.

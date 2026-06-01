@@ -64,12 +64,7 @@ defmodule MicuPokerWeb.ApiControllerTest do
     assert {:ok, _state} = join_connected(room, user_one)
     assert {:ok, _state} = join_connected(room, user_two)
 
-    acting_user_id =
-      room.id
-      |> TableServer.state()
-      |> then(fn state ->
-        Enum.find(state.players, &(&1.seat_number == state.turn_seat)).user_id
-      end)
+    acting_user_id = acting_user_id(room, [user_one, user_two])
 
     assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
 
@@ -79,6 +74,8 @@ defmodule MicuPokerWeb.ApiControllerTest do
              json_response(conn, 200)
 
     for player <- players, player["in_hand"] do
+      refute Map.has_key?(player, "user_id")
+      assert player["is_me"] == false
       assert Enum.all?(player["cards"], &(&1 == %{"hidden" => true}))
       assert player["hand_summary"] == nil
     end
@@ -87,5 +84,11 @@ defmodule MicuPokerWeb.ApiControllerTest do
   defp join_connected(room, user) do
     assert {:ok, _state} = TableServer.join(room.id, user.id)
     TableServer.connect(room.id, user.id, make_ref())
+  end
+
+  defp acting_user_id(room, users) do
+    users
+    |> Enum.find(fn user -> TableServer.state(room.id, user.id).valid_actions.actions != [] end)
+    |> Map.fetch!(:id)
   end
 end

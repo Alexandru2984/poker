@@ -44,9 +44,21 @@ defmodule MicuPokerWeb.TableChannel do
     {:reply, normalize_reply(reply), socket}
   end
 
+  def handle_in("action", _payload, socket) do
+    {:reply, {:error, %{reason: "invalid_payload"}}, socket}
+  end
+
   def handle_in("chat", %{"message" => message}, socket) do
     reply = TableServer.chat(socket.assigns.room_id, socket.assigns.user_id, message)
     {:reply, normalize_reply(reply), socket}
+  end
+
+  def handle_in("chat", _payload, socket) do
+    {:reply, {:error, %{reason: "invalid_payload"}}, socket}
+  end
+
+  def handle_in(_event, _payload, socket) do
+    {:reply, {:error, %{reason: "unknown_event"}}, socket}
   end
 
   @impl true

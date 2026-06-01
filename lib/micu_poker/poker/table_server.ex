@@ -729,7 +729,6 @@ defmodule MicuPoker.Poker.TableServer do
             winners:
               Enum.map(awards, fn award ->
                 %{
-                  user_id: award.user_id,
                   username: award.username,
                   amount: award.amount,
                   hand: MicuPoker.Poker.HandSummary.human_rank(award.eval.name)

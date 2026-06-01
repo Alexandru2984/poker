@@ -297,6 +297,13 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert hand.room_id == room.id
     assert hand.pot_total == room.small_blind + room.big_blind
 
+    assert [%{"amount" => amount, "hand" => "uncontested", "username" => username} = winner] =
+             hand.winner_summary["winners"]
+
+    assert is_integer(amount)
+    assert is_binary(username)
+    refute Map.has_key?(winner, "user_id")
+
     ledger =
       ChipLedger
       |> Repo.all()

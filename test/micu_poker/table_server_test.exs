@@ -384,6 +384,23 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert player.disconnect_deadline
   end
 
+  test "disconnected players cannot chat or act manually", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    with_env("DISCONNECT_GRACE_SECONDS", "30")
+
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
+
+    acting_user_id = acting_user_id(room, [user_one, user_two])
+    assert :ok = TableServer.disconnect(room.id, acting_user_id)
+
+    assert {:error, :not_connected} = TableServer.chat(room.id, acting_user_id, "still here")
+    assert {:error, :not_connected} = TableServer.act(room.id, acting_user_id, "fold", 0)
+  end
+
   test "disconnect grace expiry removes a waiting player", %{room: room, user_one: user_one} do
     with_env("DISCONNECT_GRACE_SECONDS", "0")
 

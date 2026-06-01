@@ -165,6 +165,7 @@ defmodule MicuPoker.Poker.TableServer do
 
   def handle_call({:chat, user_id, message}, _from, state) do
     with {:ok, player} <- seated_player(state, user_id),
+         :ok <- validate_connected(player),
          {:ok, clean} <- clean_message(message),
          {:ok, state} <- allow_rate(state, :chat, user_id) do
       item = %{username: player.username, message: clean, at: DateTime.utc_now(:second)}
@@ -308,6 +309,7 @@ defmodule MicuPoker.Poker.TableServer do
 
   defp apply_action(state, user_id, action, amount, timeout? \\ false) do
     with {:ok, player} <- seated_player(state, user_id),
+         :ok <- validate_connected(player, timeout?),
          :ok <- validate_turn(state, player),
          :ok <- validate_action(state, player, action, amount) do
       new_state =
@@ -628,6 +630,12 @@ defmodule MicuPoker.Poker.TableServer do
       {:error, :not_your_turn}
     end
   end
+
+  defp validate_connected(player, timeout? \\ false)
+
+  defp validate_connected(_player, true), do: :ok
+  defp validate_connected(%{connected: true}, false), do: :ok
+  defp validate_connected(_player, false), do: {:error, :not_connected}
 
   defp validate_action(state, player, action, amount) do
     valid = valid_actions(state, player)

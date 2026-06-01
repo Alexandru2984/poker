@@ -30,6 +30,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - PubSub broadcasts are sanitized; LiveView and Channel clients fetch personalized table state server-side.
 - Sanitized table state exposes the internal `user_id` only for the current viewer, not for opponents or anonymous API callers.
 - Spectators and waiting players receive no action buttons and no private cards.
+- Disconnected players cannot manually chat or act; only server-side timeout handling can advance their turn while disconnected.
 - Disconnected seats are marked as reconnecting, expire after the configured grace period, and do not enter new hands while disconnected.
 - Manual leave during a hand folds the player, preserves their pot contribution through settlement, and prevents them from being seated in the next hand.
 - Player connection refs are tracked for LiveView and Channel sockets, so one closed tab cannot mark a still-connected player as disconnected.

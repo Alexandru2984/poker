@@ -364,6 +364,19 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert {:error, :rate_limited} = TableServer.chat(room.id, user_one.id, "too fast")
   end
 
+  test "rejects empty and oversized chat messages", %{room: room, user_one: user_one} do
+    with_env("MAX_CHAT_MESSAGE_LENGTH", "5")
+
+    assert {:ok, _state_one} = join_connected(room, user_one)
+
+    assert {:error, :empty_message} = TableServer.chat(room.id, user_one.id, "   ")
+    assert {:error, :message_too_long} = TableServer.chat(room.id, user_one.id, "abcdef")
+    assert :ok = TableServer.chat(room.id, user_one.id, "abcde")
+
+    state = TableServer.state(room.id, user_one.id)
+    assert [%{message: "abcde"} | _] = state.chat
+  end
+
   test "rate limits repeated action attempts", %{
     room: room,
     user_one: user_one,

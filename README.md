@@ -11,7 +11,7 @@ This is play-money only. Chips are virtual demo chips with no real-world value. 
 - Real-time poker table using Phoenix LiveView, Phoenix Channels, PubSub, and a GenServer per table.
 - Server-authoritative deck, private hole cards, turns, action validation, stack changes, pot, showdown, and winner calculation.
 - Real card faces with suit symbols, own-hand summaries, board texture hints, and best-five display after enough board cards.
-- Table chat with message length validation.
+- Table chat with explicit empty-message and max-length rejection.
 - Spectator-safe public table state: other players' private cards are hidden before showdown.
 - Folded/uncontested hands do not reveal private cards; only real showdowns expose all remaining hole cards.
 - Configurable active-room capacity enforcement with `MAX_ROOMS`.
@@ -163,7 +163,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - The server owns deck, cards, turns, pot, stacks, and winners.
 - Clients never receive other players' private cards before showdown.
 - Uncontested pots keep folded private cards hidden from spectators, public APIs, and other players.
-- Chat and display names are length/format constrained and HTML-escaped by Phoenix templates.
+- Chat and display names are length/format constrained and HTML-escaped by Phoenix templates; oversized chat messages are rejected instead of silently truncated.
 - Chat and repeated action attempts are rate-limited server-side.
 - Only real LiveView/Channel connections mark a player connected; HTTP joins only reserve a seat.
 - Multiple LiveView/Channel connections for the same player are reference-counted, so closing one tab does not disconnect the player while another is still open.

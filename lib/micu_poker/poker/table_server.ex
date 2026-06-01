@@ -832,12 +832,12 @@ defmodule MicuPoker.Poker.TableServer do
 
   defp clean_message(message) do
     max = System.get_env("MAX_CHAT_MESSAGE_LENGTH", "300") |> String.to_integer()
-    clean = message |> to_string() |> String.trim() |> String.slice(0, max)
+    clean = message |> to_string() |> String.trim()
 
-    if clean == "" do
-      {:error, :empty_message}
-    else
-      {:ok, clean}
+    cond do
+      clean == "" -> {:error, :empty_message}
+      String.length(clean) > max -> {:error, :message_too_long}
+      true -> {:ok, clean}
     end
   end
 

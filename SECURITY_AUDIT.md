@@ -13,6 +13,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Added tests for multi-user card isolation, late-join behavior, mobile layout guardrails, hand summaries, signed socket tokens, and socket impersonation rejection.
 - Disabled Erlang distribution in systemd so the release no longer opens a random BEAM listener on `0.0.0.0`.
 - Added server-side chat/action rate limits and disconnect grace handling for LiveView and Channel clients.
+- Changed chat validation to reject oversized messages explicitly instead of silently truncating them.
 - Added tested main-pot, side-pot, and split-pot settlement for showdown.
 - Added transactional finished-hand persistence for final stacks, pot total, winner summary, and zero-sum chip ledger entries.
 

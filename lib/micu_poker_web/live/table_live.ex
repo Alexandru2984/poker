@@ -88,8 +88,13 @@ defmodule MicuPokerWeb.TableLive do
   end
 
   def handle_event("chat", %{"chat" => %{"message" => message}}, socket) do
-    TableServer.chat(socket.assigns.room_id, socket.assigns.current_user.id, message)
-    {:noreply, assign(socket, :chat_message, "")}
+    case TableServer.chat(socket.assigns.room_id, socket.assigns.current_user.id, message) do
+      :ok ->
+        {:noreply, assign(socket, :chat_message, "")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Chat rejected: #{human_error(reason)}")}
+    end
   end
 
   @impl true
@@ -156,4 +161,9 @@ defmodule MicuPokerWeb.TableLive do
       true -> base
     end
   end
+
+  defp human_error(:message_too_long), do: "message is too long"
+  defp human_error(:empty_message), do: "message is empty"
+  defp human_error(:rate_limited), do: "slow down"
+  defp human_error(reason), do: to_string(reason)
 end

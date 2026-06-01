@@ -181,6 +181,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - A supervised room janitor completes stale rooms and releases stale seats after `ROOM_IDLE_TIMEOUT_MINUTES`.
 - Public routes and APIs do not create guest users; unused guest users with no room history are removed after `UNUSED_GUEST_RETENTION_MINUTES`.
 - Public room APIs do not start table processes; table state is returned only for already-running tables.
+- Invalid or missing public room API IDs return JSON 404 responses instead of leaking framework exceptions.
 - Lobby and `GET /api/rooms` hide rooms marked `complete`.
 - `MAX_ROOMS` is enforced against rooms that are not `complete`, limiting accidental or abusive room growth.
 - Full rooms allow spectator access only when `spectator_enabled` is true; otherwise LiveView, POST join, and Channel joins are rejected.

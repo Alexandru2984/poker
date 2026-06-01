@@ -44,6 +44,14 @@ defmodule MicuPokerWeb.ApiControllerTest do
     assert :not_found = TableSupervisor.lookup_table(room.id)
   end
 
+  test "room API returns JSON 404 for invalid or missing room ids", %{conn: conn} do
+    conn = get(conn, ~p"/api/rooms/not-a-number")
+    assert %{"error" => "room_not_found"} = json_response(conn, 404)
+
+    conn = get(build_conn(), ~p"/api/rooms/999999999")
+    assert %{"error" => "room_not_found"} = json_response(conn, 404)
+  end
+
   test "public room API does not reveal folded cards after uncontested hands", %{conn: conn} do
     {:ok, user_one} = Accounts.create_guest_user()
     {:ok, user_two} = Accounts.create_guest_user()

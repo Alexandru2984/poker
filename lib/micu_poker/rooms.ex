@@ -20,9 +20,18 @@ defmodule MicuPoker.Rooms do
   def get_room!(id), do: Room |> Repo.get!(id) |> with_player_count()
 
   def get_room(id) do
-    case Repo.get(Room, id) do
-      nil -> nil
-      room -> with_player_count(room)
+    with {:ok, id} <- parse_id(id),
+         %Room{} = room <- Repo.get(Room, id) do
+      with_player_count(room)
+    else
+      _ -> nil
+    end
+  end
+
+  def fetch_room(id) do
+    case get_room(id) do
+      %Room{} = room -> {:ok, room}
+      nil -> {:error, :not_found}
     end
   end
 
@@ -262,6 +271,17 @@ defmodule MicuPoker.Rooms do
 
     Map.put(room, :player_count, count)
   end
+
+  defp parse_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+
+  defp parse_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {value, ""} when value > 0 -> {:ok, value}
+      _ -> {:error, :invalid_id}
+    end
+  end
+
+  defp parse_id(_id), do: {:error, :invalid_id}
 
   defp normalize_room_attrs(attrs, user_id) do
     name = String.trim(to_string(attrs["name"] || attrs[:name] || "Table"))

@@ -198,7 +198,7 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   @impl true
-  def handle_info(@timeout_tick, %{stage: stage} = state)
+  def handle_info({@timeout_tick, token}, %{timer_ref: {_timer_ref, token}, stage: stage} = state)
       when stage in [:preflop, :flop, :turn, :river] do
     case current_player(state) do
       nil ->
@@ -212,7 +212,9 @@ defmodule MicuPoker.Poker.TableServer do
     end
   end
 
-  def handle_info(:start_next_hand, state) do
+  def handle_info({@timeout_tick, _token}, state), do: {:noreply, state}
+
+  def handle_info({:start_next_hand, token}, %{next_hand_ref: {_timer_ref, token}} = state) do
     new_state =
       maybe_start_hand(%{
         state
@@ -226,6 +228,8 @@ defmodule MicuPoker.Poker.TableServer do
     broadcast(new_state)
     {:noreply, new_state}
   end
+
+  def handle_info({:start_next_hand, _token}, state), do: {:noreply, state}
 
   def handle_info({:disconnect_grace_expired, user_id}, state) do
     state = %{state | disconnect_timers: Map.delete(state.disconnect_timers, user_id)}
@@ -789,8 +793,9 @@ defmodule MicuPoker.Poker.TableServer do
 
   defp schedule_next_hand(state) do
     state = cancel_next_hand(state)
-    ref = Process.send_after(self(), :start_next_hand, next_hand_delay_ms())
-    %{state | next_hand_ref: ref}
+    token = make_ref()
+    timer_ref = Process.send_after(self(), {:start_next_hand, token}, next_hand_delay_ms())
+    %{state | next_hand_ref: {timer_ref, token}}
   end
 
   defp next_hand_delay_ms do
@@ -801,11 +806,12 @@ defmodule MicuPoker.Poker.TableServer do
 
   defp schedule_timer(state) do
     seconds = System.get_env("TURN_TIMEOUT_SECONDS", "30") |> String.to_integer()
-    ref = Process.send_after(self(), @timeout_tick, seconds * 1_000)
+    token = make_ref()
+    timer_ref = Process.send_after(self(), {@timeout_tick, token}, seconds * 1_000)
 
     %{
       state
-      | timer_ref: ref,
+      | timer_ref: {timer_ref, token},
         action_deadline: DateTime.add(DateTime.utc_now(:second), seconds, :second)
     }
   end
@@ -813,16 +819,19 @@ defmodule MicuPoker.Poker.TableServer do
   defp cancel_timer(%{timer_ref: nil} = state), do: state
 
   defp cancel_timer(state) do
-    Process.cancel_timer(state.timer_ref)
+    state.timer_ref |> timer_reference() |> Process.cancel_timer()
     %{state | timer_ref: nil}
   end
 
   defp cancel_next_hand(%{next_hand_ref: nil} = state), do: state
 
   defp cancel_next_hand(state) do
-    Process.cancel_timer(state.next_hand_ref)
+    state.next_hand_ref |> timer_reference() |> Process.cancel_timer()
     %{state | next_hand_ref: nil}
   end
+
+  defp timer_reference({timer_ref, _token}), do: timer_ref
+  defp timer_reference(timer_ref), do: timer_ref
 
   defp cancel_timer_if_turn(state, player) do
     if state.turn_seat == player.seat_number, do: cancel_timer(state), else: state

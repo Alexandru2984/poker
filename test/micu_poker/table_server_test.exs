@@ -255,12 +255,12 @@ defmodule MicuPoker.Poker.TableServerTest do
     user_one: user_one,
     user_two: user_two
   } do
+    with_env("NEXT_HAND_DELAY_MS", "10")
+
     assert {:ok, _state_one} = join_connected(room, user_one)
     assert {:ok, _state_two} = join_connected(room, user_two)
 
     assert :ok = TableServer.leave(room.id, user_one.id)
-    [{pid, _value}] = Registry.lookup(MicuPoker.TableRegistry, room.id)
-    send(pid, :start_next_hand)
 
     Process.sleep(30)
 
@@ -312,6 +312,39 @@ defmodule MicuPoker.Poker.TableServerTest do
 
     assert ledger |> Map.values() |> Enum.sum() == 0
     assert map_size(ledger) == 2
+  end
+
+  test "stale timer messages are ignored", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
+
+    [{pid, _value}] = Registry.lookup(MicuPoker.TableRegistry, room.id)
+    before_timeout = TableServer.state(room.id, user_one.id)
+
+    send(pid, {:turn_timeout, make_ref()})
+    Process.sleep(20)
+
+    after_timeout = TableServer.state(room.id, user_one.id)
+    assert after_timeout.stage == before_timeout.stage
+    assert after_timeout.turn_seat == before_timeout.turn_seat
+    assert after_timeout.pot == before_timeout.pot
+
+    acting_user_id = acting_user_id(room, [user_one, user_two])
+    assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
+
+    complete = TableServer.state(room.id, user_one.id)
+    assert complete.stage == :complete
+
+    send(pid, {:start_next_hand, make_ref()})
+    Process.sleep(20)
+
+    still_complete = TableServer.state(room.id, user_one.id)
+    assert still_complete.stage == :complete
+    assert still_complete.hand_number == complete.hand_number
   end
 
   test "hand action history records computed call and all-in amounts", %{

@@ -170,7 +170,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Uncontested pots keep folded private cards hidden from spectators, public APIs, and other players.
 - Chat and display names are length/format constrained and HTML-escaped by Phoenix templates; oversized chat messages are rejected instead of silently truncated.
 - Room defaults use `DEFAULT_STARTING_CHIPS`, `DEFAULT_SMALL_BLIND`, `DEFAULT_BIG_BLIND`, and `MAX_PLAYERS_PER_ROOM`; blinds are rejected if the big blind is larger than the starting stack.
-- Room numeric fields reject invalid or blank submitted values instead of silently falling back to defaults.
+- Room numeric fields and spectator-mode flags reject invalid or blank submitted values instead of silently falling back to defaults.
 - Chat and repeated action attempts are rate-limited server-side.
 - Players marked disconnected cannot manually chat or act until they reconnect; server timeout actions still run authoritatively.
 - LiveView bet/raise input is normalized to the current server-provided valid range before action submission.

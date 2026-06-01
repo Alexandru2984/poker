@@ -95,6 +95,55 @@ defmodule MicuPoker.RoomsTest do
     assert "can't be blank" in errors_on(changeset).small_blind
   end
 
+  test "room creation strictly validates spectator mode input" do
+    {:ok, user} = Accounts.create_guest_user()
+
+    assert {:ok, room} =
+             Rooms.create_room(
+               %{
+                 "name" => "No Spectators",
+                 "max_players" => "6",
+                 "small_blind" => "5",
+                 "big_blind" => "10",
+                 "starting_chips" => "1000",
+                 "spectator_enabled" => "false"
+               },
+               user.id
+             )
+
+    refute room.spectator_enabled
+
+    assert {:error, changeset} =
+             Rooms.create_room(
+               %{
+                 "name" => "Bad Spectators",
+                 "max_players" => "6",
+                 "small_blind" => "5",
+                 "big_blind" => "10",
+                 "starting_chips" => "1000",
+                 "spectator_enabled" => "maybe"
+               },
+               user.id
+             )
+
+    assert "is invalid" in errors_on(changeset).spectator_enabled
+
+    assert {:error, changeset} =
+             Rooms.create_room(
+               %{
+                 "name" => "Blank Spectators",
+                 "max_players" => "6",
+                 "small_blind" => "5",
+                 "big_blind" => "10",
+                 "starting_chips" => "1000",
+                 "spectator_enabled" => ""
+               },
+               user.id
+             )
+
+    assert "can't be blank" in errors_on(changeset).spectator_enabled
+  end
+
   test "room creation uses configured defaults when values are omitted" do
     {:ok, user} = Accounts.create_guest_user()
 

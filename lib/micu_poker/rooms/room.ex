@@ -39,6 +39,7 @@ defmodule MicuPoker.Rooms.Room do
       :small_blind,
       :big_blind,
       :starting_chips,
+      :spectator_enabled,
       :status
     ])
     |> validate_length(:name, min: 3, max: 40)

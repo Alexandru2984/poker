@@ -337,11 +337,21 @@ defmodule MicuPoker.Rooms do
   end
 
   defp bool_attr(attrs, key, default) do
-    case attrs[key] || attrs[String.to_atom(key)] do
+    atom_key = String.to_atom(key)
+
+    cond do
+      Map.has_key?(attrs, key) -> parse_bool_attr(blank_to_nil(attrs[key]))
+      Map.has_key?(attrs, atom_key) -> parse_bool_attr(blank_to_nil(attrs[atom_key]))
+      true -> default
+    end
+  end
+
+  defp parse_bool_attr(value) do
+    case value do
       value when value in [true, false] -> value
       value when value in ["true", "on", "1"] -> true
       value when value in ["false", "0"] -> false
-      _ -> default
+      value -> value
     end
   end
 end

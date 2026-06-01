@@ -47,7 +47,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Spectator mode is enforced consistently across LiveView, controller joins, and Phoenix Channels.
 - Room creation enforces `MAX_ROOMS` against non-complete rooms to cap active table growth.
 - Room creation rejects blinds that cannot be covered by the starting stack, preventing malformed hands at startup.
-- Room creation rejects invalid or blank numeric fields instead of silently applying defaults to submitted bad values.
+- Room creation rejects invalid or blank numeric fields and spectator-mode flags instead of silently applying defaults to submitted bad values.
 - No real-money gambling features exist.
 
 ## Remaining Risks / TODO

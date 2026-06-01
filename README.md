@@ -176,6 +176,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Finished tables schedule the next hand with `NEXT_HAND_DELAY_MS`; internal table timers are cancelled on process shutdown.
 - Room metadata status is synchronized from live table state: empty rooms are complete, one connected player is waiting, and two or more connected players are active.
 - Finished hands update `room_players.stack` and write zero-sum `chip_ledger` entries for auditability.
+- Hand action history records server-computed amounts for calls and all-ins, not untrusted client input.
 - Persisted hand winner summaries omit internal user IDs; the internal chip ledger keeps user IDs for audit records.
 - A supervised room janitor completes stale rooms and releases stale seats after `ROOM_IDLE_TIMEOUT_MINUTES`.
 - Public routes and APIs do not create guest users; unused guest users with no room history are removed after `UNUSED_GUEST_RETENTION_MINUTES`.

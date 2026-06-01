@@ -27,6 +27,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Folded/uncontested hands keep private cards hidden from spectators and public API responses; only actual showdown reveals remaining hands.
 - Stack persistence and chip ledger writes happen with finished-hand updates in one database transaction.
 - Persisted hand winner summaries omit internal user IDs; user IDs remain only in internal audit tables such as the chip ledger.
+- Persisted hand action amounts are computed server-side for call and all-in actions instead of trusting client-submitted amounts.
 - PubSub broadcasts are sanitized; LiveView and Channel clients fetch personalized table state server-side.
 - Sanitized table state exposes the internal `user_id` only for the current viewer, not for opponents or anonymous API callers.
 - Spectators and waiting players receive no action buttons and no private cards.

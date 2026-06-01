@@ -5,7 +5,7 @@ defmodule MicuPoker.Poker.TableServerTest do
   alias MicuPoker.Poker.{TableServer, TableSupervisor}
   alias MicuPoker.Repo
   alias MicuPoker.Rooms
-  alias MicuPoker.Rooms.{ChipLedger, Hand, RoomPlayer}
+  alias MicuPoker.Rooms.{ChipLedger, Hand, HandAction, RoomPlayer}
 
   setup do
     {:ok, user_one} = Accounts.create_guest_user()
@@ -312,6 +312,39 @@ defmodule MicuPoker.Poker.TableServerTest do
 
     assert ledger |> Map.values() |> Enum.sum() == 0
     assert map_size(ledger) == 2
+  end
+
+  test "hand action history records computed call and all-in amounts", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
+
+    caller_id = acting_user_id(room, [user_one, user_two])
+    call_amount = TableServer.state(room.id, caller_id).valid_actions.call_amount
+    assert call_amount > 0
+
+    assert :ok = TableServer.act(room.id, caller_id, "call", 0)
+
+    assert %HandAction{action: "call", amount: ^call_amount} =
+             Enum.find(Repo.all(HandAction), &(&1.user_id == caller_id))
+
+    {:ok, all_in_room} = create_test_room(user_one, "All In History", true)
+    assert {:ok, _pid} = TableSupervisor.ensure_table(all_in_room.id)
+    assert {:ok, _state_one} = join_connected(all_in_room, user_one)
+    assert {:ok, _state_two} = join_connected(all_in_room, user_two)
+
+    all_in_user_id = acting_user_id(all_in_room, [user_one, user_two])
+    all_in_total = TableServer.state(all_in_room.id, all_in_user_id).valid_actions.max_total_bet
+
+    assert :ok = TableServer.act(all_in_room.id, all_in_user_id, "all_in", 0)
+
+    assert %HandAction{action: "all_in", amount: ^all_in_total} =
+             HandAction
+             |> Repo.all()
+             |> Enum.find(&(&1.user_id == all_in_user_id and &1.action == "all_in"))
   end
 
   test "completed hands schedule the next hand with configured delay", %{

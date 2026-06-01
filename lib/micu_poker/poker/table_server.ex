@@ -312,11 +312,13 @@ defmodule MicuPoker.Poker.TableServer do
          :ok <- validate_connected(player, timeout?),
          :ok <- validate_turn(state, player),
          :ok <- validate_action(state, player, action, amount) do
+      record_amount = action_record_amount(state, player, action, amount)
+
       new_state =
         state
         |> cancel_timer()
         |> commit_action(player, action, amount)
-        |> record_action(player, action, amount, timeout?)
+        |> record_action(player, action, record_amount, timeout?)
         |> settle_or_advance()
 
       {:ok, new_state}
@@ -651,6 +653,16 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp call_amount(state, player), do: max(state.current_bet - player.bet, 0)
+
+  defp action_record_amount(state, player, :call, _amount),
+    do: min(call_amount(state, player), player.stack)
+
+  defp action_record_amount(_state, player, :all_in, _amount), do: player.bet + player.stack
+
+  defp action_record_amount(_state, _player, action, amount) when action in [:bet, :raise],
+    do: amount
+
+  defp action_record_amount(_state, _player, _action, _amount), do: 0
 
   defp take_chips(state, user_id, amount) do
     player = Enum.find(state.players, &(&1.user_id == user_id))

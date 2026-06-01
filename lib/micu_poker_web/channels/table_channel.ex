@@ -1,13 +1,20 @@
 defmodule MicuPokerWeb.TableChannel do
   use Phoenix.Channel
 
+  alias MicuPoker.Rooms
   alias MicuPoker.Poker.{TableServer, TableSupervisor}
 
   @impl true
   def join("table:" <> room_id, _payload, socket) do
-    room_id = String.to_integer(room_id)
-    {:ok, _pid} = TableSupervisor.ensure_table(room_id)
+    with {:ok, room} <- Rooms.fetch_room(room_id),
+         {:ok, _pid} <- TableSupervisor.ensure_table(room.id) do
+      join_table(room.id, socket)
+    else
+      _error -> {:error, %{reason: "room_not_found"}}
+    end
+  end
 
+  defp join_table(room_id, socket) do
     case TableServer.join(room_id, socket.assigns.user_id) do
       {:ok, _state} ->
         connection_ref = make_ref()

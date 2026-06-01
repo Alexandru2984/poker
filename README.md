@@ -133,6 +133,7 @@ Certbot's Nginx plugin cannot parse the existing global CrowdSec Lua config on t
 - Endpoint: `/socket`
 - Phoenix topic: `table:<room_id>`
 - Browser pages include a signed `<meta name="socket-token">`; channel clients must connect with `?token=<signed_token>`. Raw `user_id` query parameters are rejected.
+- Invalid or missing `table:<room_id>` channel topics are rejected with `room_not_found` instead of raising.
 - Events:
   - `phx_join`
   - `state`

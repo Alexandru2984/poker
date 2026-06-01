@@ -291,10 +291,10 @@ defmodule MicuPoker.Rooms do
     %{
       name: name,
       slug: slug,
-      max_players: int_attr(attrs, "max_players", defaults.max_players),
-      small_blind: int_attr(attrs, "small_blind", defaults.small_blind),
-      big_blind: int_attr(attrs, "big_blind", defaults.big_blind),
-      starting_chips: int_attr(attrs, "starting_chips", defaults.starting_chips),
+      max_players: attr_or_default(attrs, "max_players", defaults.max_players),
+      small_blind: attr_or_default(attrs, "small_blind", defaults.small_blind),
+      big_blind: attr_or_default(attrs, "big_blind", defaults.big_blind),
+      starting_chips: attr_or_default(attrs, "starting_chips", defaults.starting_chips),
       spectator_enabled: bool_attr(attrs, "spectator_enabled", true),
       password_hash: nil,
       status: "waiting",
@@ -316,15 +316,19 @@ defmodule MicuPoker.Rooms do
     "#{base}-#{:crypto.strong_rand_bytes(3) |> Base.encode16(case: :lower)}"
   end
 
-  defp int_attr(attrs, key, default) do
-    case attrs[key] || attrs[String.to_atom(key)] do
-      value when is_integer(value) -> value
-      value when is_binary(value) -> String.to_integer(value)
-      _ -> default
+  defp attr_or_default(attrs, key, default) do
+    cond do
+      Map.has_key?(attrs, key) -> blank_to_nil(attrs[key])
+      Map.has_key?(attrs, String.to_atom(key)) -> blank_to_nil(attrs[String.to_atom(key)])
+      true -> default
     end
-  rescue
-    _ -> default
   end
+
+  defp blank_to_nil(value) when is_binary(value) do
+    if String.trim(value) == "", do: nil, else: value
+  end
+
+  defp blank_to_nil(value), do: value
 
   defp int_env(key, default) do
     System.get_env(key, "#{default}") |> String.to_integer()

@@ -63,6 +63,38 @@ defmodule MicuPoker.RoomsTest do
     assert room.spectator_enabled
   end
 
+  test "room creation rejects invalid numeric input instead of defaulting it" do
+    {:ok, user} = Accounts.create_guest_user()
+
+    assert {:error, changeset} =
+             Rooms.create_room(
+               %{
+                 "name" => "Invalid Numbers",
+                 "max_players" => "abc",
+                 "small_blind" => "5",
+                 "big_blind" => "10",
+                 "starting_chips" => "1000"
+               },
+               user.id
+             )
+
+    assert "is invalid" in errors_on(changeset).max_players
+
+    assert {:error, changeset} =
+             Rooms.create_room(
+               %{
+                 "name" => "Blank Numbers",
+                 "max_players" => "6",
+                 "small_blind" => "",
+                 "big_blind" => "10",
+                 "starting_chips" => "1000"
+               },
+               user.id
+             )
+
+    assert "can't be blank" in errors_on(changeset).small_blind
+  end
+
   test "room creation uses configured defaults when values are omitted" do
     {:ok, user} = Accounts.create_guest_user()
 

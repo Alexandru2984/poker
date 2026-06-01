@@ -10,6 +10,7 @@ defmodule MicuPokerWeb.LobbyLive do
      socket
      |> assign(:page_title, "MicuPoker Lobby")
      |> assign(:filter, "all")
+     |> assign(:room_defaults, Rooms.room_defaults())
      |> assign(:rooms, Rooms.list_rooms())
      |> assign(:room_form, to_form(%{}, as: :room))
      |> assign(

@@ -29,15 +29,15 @@
           type="number"
           field={@room_form[:max_players]}
           label="Max players"
-          value="6"
+          value={@room_defaults.max_players}
           min="2"
-          max="9"
+          max={MicuPoker.Rooms.Room.max_players()}
         />
         <.input
           type="number"
           field={@room_form[:starting_chips]}
           label="Starting chips"
-          value="1000"
+          value={@room_defaults.starting_chips}
           min="100"
           max="100000"
         />
@@ -45,10 +45,16 @@
           type="number"
           field={@room_form[:small_blind]}
           label="Small blind"
-          value="5"
+          value={@room_defaults.small_blind}
           min="1"
         />
-        <.input type="number" field={@room_form[:big_blind]} label="Big blind" value="10" min="2" />
+        <.input
+          type="number"
+          field={@room_form[:big_blind]}
+          label="Big blind"
+          value={@room_defaults.big_blind}
+          min="2"
+        />
         <label class="check-row">
           <input type="checkbox" name="room[spectator_enabled]" checked /> Spectators
         </label>

@@ -54,6 +54,7 @@ defmodule MicuPoker.Rooms.Room do
       less_than_or_equal_to: 100_000
     )
     |> validate_blinds()
+    |> validate_blinds_fit_starting_stack()
     |> unique_constraint(:slug)
   end
 
@@ -67,6 +68,17 @@ defmodule MicuPoker.Rooms.Room do
 
     if small && big && big < small * 2 do
       add_error(changeset, :big_blind, "must be at least twice the small blind")
+    else
+      changeset
+    end
+  end
+
+  defp validate_blinds_fit_starting_stack(changeset) do
+    big = get_field(changeset, :big_blind)
+    starting_chips = get_field(changeset, :starting_chips)
+
+    if big && starting_chips && big > starting_chips do
+      add_error(changeset, :big_blind, "must be less than or equal to starting chips")
     else
       changeset
     end

@@ -26,6 +26,24 @@ defmodule MicuPoker.RoomsTest do
     assert "must be at least twice the small blind" in errors_on(changeset).big_blind
   end
 
+  test "room creation rejects blinds larger than starting stack" do
+    {:ok, user} = Accounts.create_guest_user()
+
+    assert {:error, changeset} =
+             Rooms.create_room(
+               %{
+                 "name" => "Broken Stack Room",
+                 "max_players" => "6",
+                 "small_blind" => "50",
+                 "big_blind" => "100",
+                 "starting_chips" => "99"
+               },
+               user.id
+             )
+
+    assert "must be less than or equal to starting chips" in errors_on(changeset).big_blind
+  end
+
   test "room creation accepts strict valid values" do
     {:ok, user} = Accounts.create_guest_user()
 
@@ -43,6 +61,33 @@ defmodule MicuPoker.RoomsTest do
 
     assert room.name == "Good Room"
     assert room.spectator_enabled
+  end
+
+  test "room creation uses configured defaults when values are omitted" do
+    {:ok, user} = Accounts.create_guest_user()
+
+    with_env(
+      %{
+        "DEFAULT_STARTING_CHIPS" => "1500",
+        "DEFAULT_SMALL_BLIND" => "15",
+        "DEFAULT_BIG_BLIND" => "30",
+        "MAX_PLAYERS_PER_ROOM" => "8"
+      },
+      fn ->
+        assert {:ok, room} =
+                 Rooms.create_room(
+                   %{
+                     "name" => "Default Room"
+                   },
+                   user.id
+                 )
+
+        assert room.max_players == 6
+        assert room.starting_chips == 1500
+        assert room.small_blind == 15
+        assert room.big_blind == 30
+      end
+    )
   end
 
   test "list rooms excludes complete rooms from lobby results" do
@@ -166,17 +211,21 @@ defmodule MicuPoker.RoomsTest do
   end
 
   defp with_env(key, value, fun) do
-    previous = System.get_env(key)
-    System.put_env(key, value)
+    with_env(%{key => value}, fun)
+  end
+
+  defp with_env(values, fun) when is_map(values) do
+    previous = Map.new(values, fn {key, _value} -> {key, System.get_env(key)} end)
+
+    Enum.each(values, fn {key, value} -> System.put_env(key, value) end)
 
     try do
       fun.()
     after
-      if previous do
-        System.put_env(key, previous)
-      else
-        System.delete_env(key)
-      end
+      Enum.each(previous, fn
+        {key, nil} -> System.delete_env(key)
+        {key, value} -> System.put_env(key, value)
+      end)
     end
   end
 end

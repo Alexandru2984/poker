@@ -36,6 +36,7 @@ Scope: Phoenix app code, realtime socket authorization, card privacy, action val
 - Public room API reads are side-effect free and do not start table GenServers.
 - Spectator mode is enforced consistently across LiveView, controller joins, and Phoenix Channels.
 - Room creation enforces `MAX_ROOMS` against non-complete rooms to cap active table growth.
+- Room creation rejects blinds that cannot be covered by the starting stack, preventing malformed hands at startup.
 - No real-money gambling features exist.
 
 ## Remaining Risks / TODO

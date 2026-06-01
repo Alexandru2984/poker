@@ -245,6 +245,15 @@ defmodule MicuPoker.Rooms do
 
   def room_capacity_reached?, do: active_room_count() >= max_rooms()
 
+  def room_defaults do
+    %{
+      max_players: min(Room.max_players(), 6),
+      starting_chips: int_env("DEFAULT_STARTING_CHIPS", 1000),
+      small_blind: int_env("DEFAULT_SMALL_BLIND", 5),
+      big_blind: int_env("DEFAULT_BIG_BLIND", 10)
+    }
+  end
+
   defp with_player_count(%Room{} = room) do
     count =
       RoomPlayer
@@ -257,14 +266,15 @@ defmodule MicuPoker.Rooms do
   defp normalize_room_attrs(attrs, user_id) do
     name = String.trim(to_string(attrs["name"] || attrs[:name] || "Table"))
     slug = unique_slug(name)
+    defaults = room_defaults()
 
     %{
       name: name,
       slug: slug,
-      max_players: int_attr(attrs, "max_players", 6),
-      small_blind: int_attr(attrs, "small_blind", 5),
-      big_blind: int_attr(attrs, "big_blind", 10),
-      starting_chips: int_attr(attrs, "starting_chips", 1000),
+      max_players: int_attr(attrs, "max_players", defaults.max_players),
+      small_blind: int_attr(attrs, "small_blind", defaults.small_blind),
+      big_blind: int_attr(attrs, "big_blind", defaults.big_blind),
+      starting_chips: int_attr(attrs, "starting_chips", defaults.starting_chips),
       spectator_enabled: bool_attr(attrs, "spectator_enabled", true),
       password_hash: nil,
       status: "waiting",
@@ -292,6 +302,12 @@ defmodule MicuPoker.Rooms do
       value when is_binary(value) -> String.to_integer(value)
       _ -> default
     end
+  rescue
+    _ -> default
+  end
+
+  defp int_env(key, default) do
+    System.get_env(key, "#{default}") |> String.to_integer()
   rescue
     _ -> default
   end

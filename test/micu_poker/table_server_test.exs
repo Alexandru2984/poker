@@ -450,6 +450,34 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert player.disconnect_deadline
   end
 
+  test "stale disconnect grace messages are ignored", %{room: room, user_one: user_one} do
+    with_env("DISCONNECT_GRACE_SECONDS", "30")
+
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert :ok = TableServer.disconnect(room.id, user_one.id)
+
+    [{pid, _value}] = Registry.lookup(MicuPoker.TableRegistry, room.id)
+    send(pid, {:disconnect_grace_expired, user_one.id, make_ref()})
+    Process.sleep(20)
+
+    state = TableServer.state(room.id, user_one.id)
+    player = Enum.find(state.players, &(&1.user_id == user_one.id))
+    assert player.connected == false
+    assert player.disconnect_deadline
+
+    assert {:ok, _state} = TableServer.join(room.id, user_one.id)
+    assert {:ok, reconnected} = TableServer.connect(room.id, user_one.id, make_ref())
+    assert Enum.find(reconnected.players, &(&1.user_id == user_one.id)).connected
+
+    send(pid, {:disconnect_grace_expired, user_one.id, make_ref()})
+    Process.sleep(20)
+
+    still_connected = TableServer.state(room.id, user_one.id)
+    player = Enum.find(still_connected.players, &(&1.user_id == user_one.id))
+    assert player.connected == true
+    assert player.disconnect_deadline == nil
+  end
+
   test "disconnected players cannot chat or act manually", %{
     room: room,
     user_one: user_one,

@@ -231,37 +231,17 @@ defmodule MicuPoker.Poker.TableServer do
 
   def handle_info({:start_next_hand, _token}, state), do: {:noreply, state}
 
-  def handle_info({:disconnect_grace_expired, user_id}, state) do
-    state = %{state | disconnect_timers: Map.delete(state.disconnect_timers, user_id)}
+  def handle_info({:disconnect_grace_expired, user_id, token}, state) do
+    case Map.get(state.disconnect_timers, user_id) do
+      {_timer_ref, ^token} ->
+        state = %{state | disconnect_timers: Map.delete(state.disconnect_timers, user_id)}
+        new_state = expire_disconnect_grace(state, user_id) |> sync_room_status()
+        broadcast(new_state)
+        {:noreply, new_state}
 
-    new_state =
-      case Enum.find(state.players, &(&1.user_id == user_id)) do
-        nil ->
-          state
-
-        %{connected: true} ->
-          state
-
-        %{in_hand: true, folded: false} = player ->
-          state
-          |> cancel_timer_if_turn(player)
-          |> commit_action(player, :fold, 0)
-          |> record_action(player, :fold, 0, true)
-          |> add_log("#{player.username} was folded after disconnect grace expired.")
-          |> settle_or_advance()
-
-        player ->
-          Rooms.leave_room(state.room_id, user_id)
-
-          state
-          |> remove_player(user_id)
-          |> add_log("#{player.username} was removed after disconnect grace expired.")
-          |> maybe_start_hand()
-      end
-      |> sync_room_status()
-
-    broadcast(new_state)
-    {:noreply, new_state}
+      _stale_or_missing ->
+        {:noreply, state}
+    end
   end
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -270,7 +250,11 @@ defmodule MicuPoker.Poker.TableServer do
   def terminate(_reason, state) do
     cancel_timer(state)
     cancel_next_hand(state)
-    Enum.each(state.disconnect_timers, fn {_user_id, ref} -> Process.cancel_timer(ref) end)
+
+    Enum.each(state.disconnect_timers, fn {_user_id, timer} ->
+      timer |> timer_reference() |> Process.cancel_timer()
+    end)
+
     :ok
   end
 
@@ -922,12 +906,42 @@ defmodule MicuPoker.Poker.TableServer do
       _player ->
         state = cancel_disconnect_grace(state, user_id)
         seconds = System.get_env("DISCONNECT_GRACE_SECONDS", "60") |> String.to_integer()
-        ref = Process.send_after(self(), {:disconnect_grace_expired, user_id}, seconds * 1_000)
+        token = make_ref()
+
+        timer_ref =
+          Process.send_after(self(), {:disconnect_grace_expired, user_id, token}, seconds * 1_000)
+
         deadline = DateTime.add(DateTime.utc_now(:second), seconds, :second)
 
         state
-        |> Map.update!(:disconnect_timers, &Map.put(&1, user_id, ref))
+        |> Map.update!(:disconnect_timers, &Map.put(&1, user_id, {timer_ref, token}))
         |> update_player(user_id, &%{&1 | connected: false, disconnect_deadline: deadline})
+    end
+  end
+
+  defp expire_disconnect_grace(state, user_id) do
+    case Enum.find(state.players, &(&1.user_id == user_id)) do
+      nil ->
+        state
+
+      %{connected: true} ->
+        state
+
+      %{in_hand: true, folded: false} = player ->
+        state
+        |> cancel_timer_if_turn(player)
+        |> commit_action(player, :fold, 0)
+        |> record_action(player, :fold, 0, true)
+        |> add_log("#{player.username} was folded after disconnect grace expired.")
+        |> settle_or_advance()
+
+      player ->
+        Rooms.leave_room(state.room_id, user_id)
+
+        state
+        |> remove_player(user_id)
+        |> add_log("#{player.username} was removed after disconnect grace expired.")
+        |> maybe_start_hand()
     end
   end
 
@@ -961,8 +975,8 @@ defmodule MicuPoker.Poker.TableServer do
       {nil, _timers} ->
         update_player(state, user_id, &%{&1 | connected: true, disconnect_deadline: nil})
 
-      {ref, timers} ->
-        Process.cancel_timer(ref)
+      {timer, timers} ->
+        timer |> timer_reference() |> Process.cancel_timer()
 
         state
         |> Map.put(:disconnect_timers, timers)

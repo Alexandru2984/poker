@@ -296,6 +296,33 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert map_size(ledger) == 2
   end
 
+  test "completed hands schedule the next hand with configured delay", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    with_env("NEXT_HAND_DELAY_MS", "10")
+
+    assert {:ok, _state_one} = join_connected(room, user_one)
+    assert {:ok, _state_two} = join_connected(room, user_two)
+
+    acting_user_id =
+      room.id
+      |> TableServer.state()
+      |> then(fn state ->
+        Enum.find(state.players, &(&1.seat_number == state.turn_seat)).user_id
+      end)
+
+    assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
+    assert TableServer.state(room.id).stage == :complete
+
+    Process.sleep(30)
+
+    state = TableServer.state(room.id)
+    assert state.hand_number == 2
+    assert state.stage == :preflop
+  end
+
   test "disconnect keeps a seat reserved and join reconnects it", %{
     room: room,
     user_one: user_one

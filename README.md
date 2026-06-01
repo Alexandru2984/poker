@@ -72,6 +72,7 @@ Required variables:
 - `DEFAULT_SMALL_BLIND=5`
 - `DEFAULT_BIG_BLIND=10`
 - `TURN_TIMEOUT_SECONDS=30`
+- `NEXT_HAND_DELAY_MS=4000`
 - `DISCONNECT_GRACE_SECONDS=60`
 - `CHAT_RATE_LIMIT_MS=1200`
 - `ACTION_RATE_LIMIT_MS=400`
@@ -169,6 +170,7 @@ LiveView uses Phoenix's standard `/live` WebSocket.
 - Only real LiveView/Channel connections mark a player connected; HTTP joins only reserve a seat.
 - Multiple LiveView/Channel connections for the same player are reference-counted, so closing one tab does not disconnect the player while another is still open.
 - Disconnects keep the seat reserved for `DISCONNECT_GRACE_SECONDS`; reconnecting restores the same seat, and expired waiting seats are removed.
+- Finished tables schedule the next hand with `NEXT_HAND_DELAY_MS`; internal table timers are cancelled on process shutdown.
 - Room metadata status is synchronized from live table state: empty rooms are complete, one connected player is waiting, and two or more connected players are active.
 - Finished hands update `room_players.stack` and write zero-sum `chip_ledger` entries for auditability.
 - A supervised room janitor completes stale rooms and releases stale seats after `ROOM_IDLE_TIMEOUT_MINUTES`.

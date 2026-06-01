@@ -56,6 +56,7 @@ defmodule MicuPoker.Poker.TableServer do
       acted: MapSet.new(),
       action_deadline: nil,
       timer_ref: nil,
+      next_hand_ref: nil,
       disconnect_timers: %{},
       connections: %{},
       rate_limits: %{chat: %{}, action: %{}},
@@ -216,7 +217,8 @@ defmodule MicuPoker.Poker.TableServer do
         state
         | players:
             Enum.filter(state.players, &(&1.stack > 0)) ++
-              Enum.filter(state.players, &(&1.stack <= 0))
+              Enum.filter(state.players, &(&1.stack <= 0)),
+          next_hand_ref: nil
       })
       |> sync_room_status()
 
@@ -258,6 +260,14 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(_reason, state) do
+    cancel_timer(state)
+    cancel_next_hand(state)
+    Enum.each(state.disconnect_timers, fn {_user_id, ref} -> Process.cancel_timer(ref) end)
+    :ok
+  end
 
   def valid_actions(state, player) do
     cond do
@@ -492,6 +502,8 @@ defmodule MicuPoker.Poker.TableServer do
   defp maybe_start_hand(state), do: state
 
   defp start_hand(state) do
+    state = cancel_next_hand(state)
+
     players =
       state.players
       |> Enum.filter(&(&1.connected && &1.stack > 0))
@@ -757,8 +769,15 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp schedule_next_hand(state) do
-    Process.send_after(self(), :start_next_hand, 4_000)
-    state
+    state = cancel_next_hand(state)
+    ref = Process.send_after(self(), :start_next_hand, next_hand_delay_ms())
+    %{state | next_hand_ref: ref}
+  end
+
+  defp next_hand_delay_ms do
+    System.get_env("NEXT_HAND_DELAY_MS", "4000") |> String.to_integer()
+  rescue
+    _ -> 4000
   end
 
   defp schedule_timer(state) do
@@ -777,6 +796,13 @@ defmodule MicuPoker.Poker.TableServer do
   defp cancel_timer(state) do
     Process.cancel_timer(state.timer_ref)
     %{state | timer_ref: nil}
+  end
+
+  defp cancel_next_hand(%{next_hand_ref: nil} = state), do: state
+
+  defp cancel_next_hand(state) do
+    Process.cancel_timer(state.next_hand_ref)
+    %{state | next_hand_ref: nil}
   end
 
   defp cancel_timer_if_turn(state, player) do

@@ -1400,3 +1400,22 @@ button.primary:hover:not(:disabled) {
     transition-duration: 0.01ms !important;
   }
 }
+
+.hero-controls {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  gap: 8px;
+}
+
+.hero-controls button {
+  flex: 1;
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.hero-panel button.primary {
+  margin-top: 12px;
+  width: 100%;
+}

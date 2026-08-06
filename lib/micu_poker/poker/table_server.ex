@@ -24,6 +24,21 @@ defmodule MicuPoker.Poker.TableServer do
   def disconnect(room_id, user_id, ref), do: call(room_id, {:disconnect, user_id, ref})
   def leave(room_id, user_id), do: call(room_id, {:leave, user_id})
 
+  @doc """
+  Stops dealing `user_id` in from the next hand, without giving up their seat.
+  """
+  def sit_out(room_id, user_id), do: call(room_id, {:sit_out, user_id})
+
+  @doc """
+  Puts `user_id` back in the game from the next hand.
+  """
+  def sit_in(room_id, user_id), do: call(room_id, {:sit_in, user_id})
+
+  @doc """
+  Tops a busted player back up to the table's buy-in.
+  """
+  def rebuy(room_id, user_id), do: call(room_id, {:rebuy, user_id})
+
   def act(room_id, user_id, action, amount \\ 0),
     do: call(room_id, {:act, user_id, action, amount})
 
@@ -150,6 +165,43 @@ defmodule MicuPoker.Poker.TableServer do
 
     broadcast(new_state)
     {:reply, :ok, new_state}
+  end
+
+  def handle_call({:sit_out, user_id}, _from, state) do
+    toggle_sitting_out(state, user_id, true, "#{username(state, user_id)} is sitting out.")
+  end
+
+  def handle_call({:sit_in, user_id}, _from, state) do
+    toggle_sitting_out(state, user_id, false, "#{username(state, user_id)} is back in.")
+  end
+
+  def handle_call({:rebuy, user_id}, _from, state) do
+    case seated_player(state, user_id) do
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+
+      # Checked before the hand guard: a player who still has chips is told the
+      # useful thing, rather than being sent away to wait for a hand to end.
+      {:ok, %{stack: stack}} when stack > 0 ->
+        {:reply, {:error, :stack_not_empty}, state}
+
+      {:ok, %{in_hand: true, folded: false}} ->
+        {:reply, {:error, :hand_in_progress}, state}
+
+      {:ok, player} ->
+        amount = state.room.starting_chips
+        Rooms.record_rebuy(state.room_id, user_id, amount)
+
+        new_state =
+          state
+          |> update_player(user_id, &%{&1 | stack: amount, sitting_out: false})
+          |> add_log("#{player.username} bought in for #{amount}.")
+          |> maybe_start_hand()
+          |> sync_room_status()
+
+        broadcast(new_state)
+        {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
+    end
   end
 
   def handle_call({:disconnect, user_id}, _from, state) do
@@ -572,13 +624,10 @@ defmodule MicuPoker.Poker.TableServer do
 
   defp maybe_start_hand(%{stage: stage} = state) when stage in [:waiting, :complete, :showdown] do
     state = %{state | players: Enum.reject(state.players, &Map.get(&1, :leaving, false))}
-    playable = Enum.filter(state.players, &(&1.connected && &1.stack > 0))
+    playable = Enum.filter(state.players, &dealt_in?/1)
 
     if length(playable) >= 2 do
-      start_hand(%{
-        state
-        | players: playable ++ Enum.reject(state.players, &(&1.connected && &1.stack > 0))
-      })
+      start_hand(%{state | players: playable ++ Enum.reject(state.players, &dealt_in?/1)})
     else
       %{state | stage: :waiting, turn_seat: nil, action_deadline: nil}
     end
@@ -591,12 +640,12 @@ defmodule MicuPoker.Poker.TableServer do
 
     players =
       state.players
-      |> Enum.filter(&(&1.connected && &1.stack > 0))
+      |> Enum.filter(&dealt_in?/1)
       |> Enum.sort_by(& &1.seat_number)
 
     out_players =
       state.players
-      |> Enum.reject(&(&1.connected && &1.stack > 0))
+      |> Enum.reject(&dealt_in?/1)
       |> Enum.sort_by(& &1.seat_number)
 
     deck = Deck.shuffle()
@@ -792,6 +841,42 @@ defmodule MicuPoker.Poker.TableServer do
 
   defp mark_acted(state, user_id), do: Betting.mark_acted(state, user_id)
 
+  # Sitting out takes effect from the next hand: a player cannot walk away from
+  # chips they have already committed to the pot.
+  defp toggle_sitting_out(state, user_id, sitting_out?, message) do
+    case seated_player(state, user_id) do
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+
+      {:ok, %{sitting_out: ^sitting_out?}} ->
+        {:reply, {:ok, TableState.sanitize(state, user_id)}, state}
+
+      {:ok, _player} ->
+        new_state =
+          state
+          |> update_player(user_id, &%{&1 | sitting_out: sitting_out?})
+          |> add_log(message)
+          |> maybe_start_hand()
+          |> sync_room_status()
+
+        broadcast(new_state)
+        {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
+    end
+  end
+
+  defp username(state, user_id) do
+    case Enum.find(state.players, &(&1.user_id == user_id)) do
+      nil -> "A player"
+      player -> player.username
+    end
+  end
+
+  # Who the next hand is dealt to. A player who is disconnected, out of chips or
+  # sitting out keeps their seat but is skipped.
+  defp dealt_in?(player) do
+    player.connected and player.stack > 0 and not Map.get(player, :sitting_out, false)
+  end
+
   defp active_players(state), do: Enum.filter(state.players, &(&1.in_hand && !&1.folded))
   defp current_player(state), do: Enum.find(state.players, &(&1.seat_number == state.turn_seat))
 
@@ -934,7 +1019,8 @@ defmodule MicuPoker.Poker.TableServer do
         in_hand: false,
         connected: false,
         disconnect_deadline: nil,
-        leaving: false
+        leaving: false,
+        sitting_out: false
       }
     end)
   end

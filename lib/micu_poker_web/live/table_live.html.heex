@@ -124,6 +124,14 @@
         <%= cond do %>
           <% is_nil(hero) -> %>
             <p class="muted-note">You are spectating this table.</p>
+          <% hero.stack == 0 and not hero.in_hand -> %>
+            <p class="muted-note">You are out of chips.</p>
+            <button phx-click="seat" phx-value-seat="rebuy" class="primary">
+              Buy in for {@table.room.starting_chips}
+            </button>
+          <% hero.sitting_out -> %>
+            <p class="muted-note">You are sitting out.</p>
+            <button phx-click="seat" phx-value-seat="sit_in" class="primary">Sit back in</button>
           <% !hero.in_hand -> %>
             <p class="muted-note">Waiting for the next hand.</p>
           <% hero.cards == [] -> %>
@@ -156,6 +164,12 @@
                 </div>
               </div>
             <% end %>
+        <% end %>
+
+        <%= if hero && hero.stack > 0 && !hero.sitting_out do %>
+          <div class="hero-controls">
+            <button phx-click="seat" phx-value-seat="sit_out">Sit out next hand</button>
+          </div>
         <% end %>
       </section>
 

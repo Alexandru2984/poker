@@ -64,6 +64,7 @@ defmodule MicuPoker.Poker.TableState do
       all_in: player.all_in,
       in_hand: player.in_hand,
       connected: player.connected,
+      sitting_out: Map.get(player, :sitting_out, false),
       disconnect_deadline: player.disconnect_deadline,
       hand_summary: if(show_cards?, do: HandSummary.summarize(player.cards, board), else: nil),
       cards: public_cards(player.cards, show_cards?)

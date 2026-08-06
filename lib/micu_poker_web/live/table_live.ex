@@ -133,6 +133,26 @@ defmodule MicuPokerWeb.TableLive do
 
   def handle_event("panel", _params, socket), do: {:noreply, socket}
 
+  def handle_event("seat", %{"seat" => command}, socket)
+      when command in ~w(sit_out sit_in rebuy) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    result =
+      case command do
+        "sit_out" -> TableServer.sit_out(room_id, user_id)
+        "sit_in" -> TableServer.sit_in(room_id, user_id)
+        "rebuy" -> TableServer.rebuy(room_id, user_id)
+      end
+
+    case result do
+      {:ok, table} -> {:noreply, put_table(socket, table)}
+      {:error, reason} -> {:noreply, put_flash(socket, :error, human_error(reason))}
+    end
+  end
+
+  def handle_event("seat", _params, socket), do: {:noreply, socket}
+
   def handle_event("chat", %{"chat" => %{"message" => message}}, socket) do
     case TableServer.chat(socket.assigns.room_id, socket.assigns.current_user.id, message) do
       :ok ->
@@ -267,6 +287,8 @@ defmodule MicuPokerWeb.TableLive do
   defp human_error(:raise_too_small), do: "that raise is below the minimum"
   defp human_error(:raise_too_large), do: "that raise is above your stack"
   defp human_error(:table_unavailable), do: "the table is restarting, try again"
+  defp human_error(:hand_in_progress), do: "wait for the hand to finish"
+  defp human_error(:stack_not_empty), do: "you still have chips to play"
   defp human_error(reason), do: to_string(reason)
 
   defp clamp_bet_amount(amount, table, room) do

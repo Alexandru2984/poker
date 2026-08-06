@@ -207,6 +207,36 @@ defmodule MicuPoker.Rooms do
     |> Repo.transaction()
   end
 
+  @doc """
+  Tops a busted player back up to `amount` and records the injection.
+
+  Per-hand ledger entries stay zero-sum; a rebuy is chips entering the table
+  from outside a hand, so it is recorded with no hand attached.
+  """
+  def record_rebuy(room_id, user_id, amount) when is_integer(amount) and amount > 0 do
+    now = DateTime.utc_now(:second)
+
+    Multi.new()
+    |> Multi.update_all(
+      :stack,
+      from(rp in RoomPlayer,
+        where: rp.room_id == ^room_id and rp.user_id == ^user_id and is_nil(rp.left_at)
+      ),
+      set: [stack: amount]
+    )
+    |> Multi.insert(
+      :ledger,
+      ChipLedger.changeset(%ChipLedger{}, %{
+        user_id: user_id,
+        room_id: room_id,
+        delta: amount,
+        reason: "rebuy",
+        created_at: now
+      })
+    )
+    |> Repo.transaction()
+  end
+
   def record_action(hand_id, user_id, action, amount, street) do
     %HandAction{}
     |> HandAction.changeset(%{

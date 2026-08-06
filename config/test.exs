@@ -29,6 +29,10 @@ config :micu_poker, room_janitor_enabled: false
 # suites drain each other's budgets. Tests that exercise limits switch it on.
 config :micu_poker, rate_limiting_enabled: false
 
+# Real logins deliberately cost ~200ms of CPU. Tests only need the algorithm to
+# round-trip, so drop the work factor to keep the suite fast.
+config :micu_poker, password_iterations: 1_000
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

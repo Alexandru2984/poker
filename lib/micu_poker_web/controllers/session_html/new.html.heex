@@ -1,0 +1,52 @@
+<main class="auth-shell">
+  <section class="auth-card">
+    <p class="eyebrow">Play-money only</p>
+    <h1>Sign in</h1>
+    <p class="auth-lead">
+      Signing in keeps your name, your table history and your stats across devices.
+    </p>
+
+    <%= if @error_message do %>
+      <p class="auth-error" role="alert">{@error_message}</p>
+    <% end %>
+
+    <form action={~p"/login"} method="post" class="auth-form">
+      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+      <%= if @return_to do %>
+        <input type="hidden" name="user[return_to]" value={@return_to} />
+      <% end %>
+
+      <label for="session-username">Username</label>
+      <input
+        id="session-username"
+        name="user[username]"
+        type="text"
+        value={@username}
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        required
+        maxlength="24"
+      />
+
+      <label for="session-password">Password</label>
+      <input
+        id="session-password"
+        name="user[password]"
+        type="password"
+        autocomplete="current-password"
+        required
+        maxlength="200"
+      />
+
+      <button type="submit" class="primary">Sign in</button>
+    </form>
+
+    <div class="auth-alt">
+      <p>No account yet?</p>
+      <.link navigate={~p"/register"}>Create one</.link>
+      <span aria-hidden="true">·</span>
+      <.link navigate={~p"/lobby"}>Play as guest</.link>
+    </div>
+  </section>
+</main>

@@ -14,6 +14,7 @@ defmodule MicuPokerWeb.Plugs.GuestSession do
   alias MicuPoker.Accounts
   alias MicuPoker.RateLimiter
   alias MicuPokerWeb.Plugs.RemoteIp
+  alias MicuPokerWeb.UserAuth
 
   @guest_creation_limit 30
   @guest_creation_window_ms :timer.hours(1)
@@ -21,17 +22,24 @@ defmodule MicuPokerWeb.Plugs.GuestSession do
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    case Accounts.get_user(get_session(conn, :guest_user_id)) do
+    # MicuPokerWeb.UserAuth.fetch_current_user/2 has already resolved a signed-in
+    # account or an existing guest. Only a visitor with neither needs a new one.
+    case conn.assigns[:current_user] do
       nil -> create_guest(conn)
-      user -> assign_identity(conn, user)
+      _user -> conn
     end
   end
 
   defp create_guest(conn) do
     if guest_creation_allowed?(conn) do
       case Accounts.create_guest_user() do
-        {:ok, user} -> assign_identity(conn, user)
-        {:error, _changeset} -> halt_with_error(conn, "Could not start a guest session.")
+        {:ok, user} ->
+          conn
+          |> put_session(:guest_user_id, user.id)
+          |> UserAuth.put_identity(user)
+
+        {:error, _changeset} ->
+          halt_with_error(conn, "Could not start a guest session.")
       end
     else
       halt_with_error(
@@ -39,13 +47,6 @@ defmodule MicuPokerWeb.Plugs.GuestSession do
         "Too many guest sessions from this network. Try again later or sign in."
       )
     end
-  end
-
-  defp assign_identity(conn, user) do
-    conn
-    |> put_session(:guest_user_id, user.id)
-    |> assign(:current_user, user)
-    |> assign(:socket_token, MicuPokerWeb.UserSocket.sign_token(user.id))
   end
 
   defp guest_creation_allowed?(conn) do

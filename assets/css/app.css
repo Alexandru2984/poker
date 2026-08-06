@@ -836,3 +836,146 @@ code {
     padding-top: 18px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Auth and gate pages (sign in, register, private table unlock)
+   --------------------------------------------------------------------------- */
+
+.auth-shell {
+  width: min(100vw - 32px, 480px);
+  margin: 0 auto;
+  padding: 48px 0;
+  display: flex;
+  align-items: center;
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.auth-card {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+}
+
+.auth-card h1 {
+  font-size: 30px;
+  line-height: 1.1;
+  margin: 6px 0 10px;
+}
+
+.auth-lead {
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 20px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 4px;
+}
+
+.auth-form label {
+  margin-top: 14px;
+}
+
+.auth-form .hint {
+  color: var(--muted);
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.auth-form button.primary {
+  margin-top: 22px;
+  min-height: 46px;
+  background: var(--green);
+  border-color: var(--green-2);
+  color: #fff;
+  font-weight: 600;
+}
+
+.auth-form button.primary:hover {
+  background: var(--green-2);
+  border-color: var(--gold);
+}
+
+.auth-error {
+  background: rgba(216, 84, 84, 0.12);
+  border: 1px solid rgba(216, 84, 84, 0.4);
+  color: #ffbdbd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.field-error {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.auth-alt {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.auth-alt a {
+  color: var(--gold);
+  border: 0;
+  background: none;
+  padding: 0;
+  min-height: 0;
+}
+
+.auth-alt a:hover {
+  text-decoration: underline;
+}
+
+.identity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.identity-chip strong {
+  color: var(--text);
+}
+
+.identity-chip .badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lock-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--gold);
+}
+
+@media (max-width: 640px) {
+  .auth-shell {
+    width: min(100vw - 20px, 430px);
+    padding: 24px 0;
+  }
+
+  .auth-card {
+    padding: 20px;
+    border-radius: 12px;
+  }
+}

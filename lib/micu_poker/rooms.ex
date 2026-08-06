@@ -6,6 +6,7 @@ defmodule MicuPoker.Rooms do
   import Ecto.Query
   alias Ecto.Changeset
   alias Ecto.Multi
+  alias MicuPoker.Accounts.Password
   alias MicuPoker.Repo
   alias MicuPoker.Rooms.{ChipLedger, Hand, HandAction, Room, RoomPlayer}
 
@@ -100,6 +101,15 @@ defmodule MicuPoker.Rooms do
         |> Repo.preload(:user)
       end
     end)
+  end
+
+  @doc """
+  Whether `user_id` currently holds a seat in `room_id`.
+  """
+  def seated?(room_id, user_id) do
+    RoomPlayer
+    |> where([rp], rp.room_id == ^room_id and rp.user_id == ^user_id and is_nil(rp.left_at))
+    |> Repo.exists?()
   end
 
   def leave_room(room_id, user_id) do
@@ -296,10 +306,30 @@ defmodule MicuPoker.Rooms do
       big_blind: attr_or_default(attrs, "big_blind", defaults.big_blind),
       starting_chips: attr_or_default(attrs, "starting_chips", defaults.starting_chips),
       spectator_enabled: bool_attr(attrs, "spectator_enabled", true),
-      password_hash: nil,
+      password: attr_or_default(attrs, "password", nil),
       status: "waiting",
       created_by: user_id
     }
+  end
+
+  @doc """
+  Whether `room` is private.
+  """
+  def protected?(%Room{password_hash: hash}), do: is_binary(hash)
+  def protected?(_room), do: false
+
+  @doc """
+  Checks a submitted room password in constant time.
+  """
+  def password_matches?(%Room{password_hash: nil}, _password), do: true
+
+  def password_matches?(%Room{password_hash: hash}, password) when is_binary(password) do
+    Password.verify(password, hash)
+  end
+
+  def password_matches?(%Room{}, _password) do
+    Password.no_user_verify()
+    false
   end
 
   defp unique_slug(name) do

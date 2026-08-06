@@ -1,0 +1,33 @@
+<main class="auth-shell">
+  <section class="auth-card">
+    <p class="eyebrow">Private table</p>
+    <h1>{@room.name}</h1>
+    <p class="auth-lead">
+      This table is password protected. Ask the host for the password to take a seat.
+    </p>
+
+    <%= if @error_message do %>
+      <p class="auth-error" role="alert">{@error_message}</p>
+    <% end %>
+
+    <form action={~p"/rooms/#{@room.id}/unlock"} method="post" class="auth-form">
+      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+
+      <label for="room-password">Table password</label>
+      <input
+        id="room-password"
+        name="room[password]"
+        type="password"
+        autocomplete="off"
+        required
+        maxlength="200"
+      />
+
+      <button type="submit" class="primary">Enter table</button>
+    </form>
+
+    <div class="auth-alt">
+      <.link navigate={~p"/lobby"}>Back to lobby</.link>
+    </div>
+  </section>
+</main>

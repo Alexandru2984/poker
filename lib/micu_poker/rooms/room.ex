@@ -2,6 +2,11 @@ defmodule MicuPoker.Rooms.Room do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias MicuPoker.Accounts.Password
+
+  @min_password_length 4
+  @max_password_length 200
+
   schema "rooms" do
     field :name, :string
     field :slug, :string
@@ -13,6 +18,7 @@ defmodule MicuPoker.Rooms.Room do
     field :password_hash, :string
     field :spectator_enabled, :boolean, default: true
     field :player_count, :integer, virtual: true, default: 0
+    field :password, :string, virtual: true, redact: true
     field :created_by, :id
 
     timestamps(type: :utc_datetime)
@@ -28,7 +34,7 @@ defmodule MicuPoker.Rooms.Room do
       :big_blind,
       :starting_chips,
       :status,
-      :password_hash,
+      :password,
       :spectator_enabled,
       :created_by
     ])
@@ -56,8 +62,48 @@ defmodule MicuPoker.Rooms.Room do
     )
     |> validate_blinds()
     |> validate_blinds_fit_starting_stack()
+    |> validate_password()
+    |> put_password_hash()
     |> unique_constraint(:slug)
   end
+
+  # A blank password means a public table, not an empty password.
+  defp validate_password(changeset) do
+    case get_change(changeset, :password) do
+      nil ->
+        changeset
+
+      "" ->
+        delete_change(changeset, :password)
+
+      password ->
+        if String.trim(password) == "" do
+          delete_change(changeset, :password)
+        else
+          validate_length(changeset, :password,
+            min: @min_password_length,
+            max: @max_password_length,
+            count: :bytes
+          )
+        end
+    end
+  end
+
+  # Hashed with the same function as account passwords: a room password gates
+  # access to a private game, so a leaked dump must not hand those games over.
+  defp put_password_hash(changeset) do
+    case changeset do
+      %Ecto.Changeset{valid?: true, changes: %{password: password}} ->
+        changeset
+        |> put_change(:password_hash, Password.hash(password))
+        |> delete_change(:password)
+
+      _no_password ->
+        changeset
+    end
+  end
+
+  def min_password_length, do: @min_password_length
 
   def max_players do
     System.get_env("MAX_PLAYERS_PER_ROOM", "9") |> String.to_integer()

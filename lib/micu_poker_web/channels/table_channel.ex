@@ -7,10 +7,24 @@ defmodule MicuPokerWeb.TableChannel do
   @impl true
   def join("table:" <> room_id, _payload, socket) do
     with {:ok, room} <- Rooms.fetch_room(room_id),
+         :ok <- authorize_room(room, socket.assigns.user_id),
          {:ok, _pid} <- TableSupervisor.ensure_table(room.id) do
       join_table(room.id, socket)
     else
+      {:error, :locked} -> {:error, %{reason: "room_locked"}}
       _error -> {:error, %{reason: "room_not_found"}}
+    end
+  end
+
+  # The socket has no access to the session, so it cannot see the unlock grant a
+  # browser holds. Require the player to already own a seat instead, which they
+  # can only have obtained by entering the password over HTTP.
+  defp authorize_room(room, user_id) do
+    cond do
+      not Rooms.protected?(room) -> :ok
+      room.created_by == user_id -> :ok
+      Rooms.seated?(room.id, user_id) -> :ok
+      true -> {:error, :locked}
     end
   end
 

@@ -5,16 +5,33 @@ defmodule MicuPokerWeb.TableLive do
   alias MicuPoker.Rooms
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id}, session, socket) do
     with {:ok, room} <- Rooms.fetch_room(id),
+         :ok <- authorize_room(socket, room, session),
          {:ok, _pid} <- TableSupervisor.ensure_table(room.id) do
       join_table(socket, room)
     else
+      {:error, :locked} ->
+        {:ok, push_navigate(socket, to: ~p"/rooms/#{id}/unlock")}
+
       _error ->
         {:ok,
          socket
          |> put_flash(:error, "Table was not found.")
          |> push_navigate(to: ~p"/lobby")}
+    end
+  end
+
+  # A private table is entered through the password prompt, which records the
+  # grant in the session. The creator never needs their own password.
+  defp authorize_room(socket, room, session) do
+    unlocked = session["unlocked_rooms"] || session[:unlocked_rooms] || []
+
+    cond do
+      not Rooms.protected?(room) -> :ok
+      room.created_by == socket.assigns.current_user.id -> :ok
+      is_list(unlocked) and room.id in unlocked -> :ok
+      true -> {:error, :locked}
     end
   end
 

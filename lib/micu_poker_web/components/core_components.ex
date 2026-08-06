@@ -417,6 +417,21 @@ defmodule MicuPokerWeb.CoreComponents do
   end
 
   @doc """
+  Lists the validation errors for one form field.
+
+  For hand-written forms that style their own inputs and so do not use `.input`.
+  """
+  attr :field, Phoenix.HTML.FormField, required: true
+
+  def error_list(assigns) do
+    assigns = assign(assigns, :messages, Enum.map(assigns.field.errors, &translate_error/1))
+
+    ~H"""
+    <p :for={message <- @messages} class="field-error" role="alert">{message}</p>
+    """
+  end
+
+  @doc """
   Renders a header with title.
   """
   attr :class, :string, default: nil

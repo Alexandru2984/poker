@@ -1,0 +1,81 @@
+<main class="auth-shell">
+  <section class="auth-card">
+    <p class="eyebrow">Play-money only</p>
+    <h1>{if @upgrade?, do: "Keep your seat", else: "Create account"}</h1>
+    <p class="auth-lead">
+      <%= if @upgrade? do %>
+        You are playing as a guest. Pick a name and password to keep this identity,
+        along with the hands you have already played.
+      <% else %>
+        Virtual chips only. No deposits, withdrawals, payments or cash-out, ever.
+      <% end %>
+    </p>
+
+    <.form :let={f} for={@changeset} action={~p"/register"} class="auth-form">
+      <label for={f[:username].id}>Username</label>
+      <input
+        id={f[:username].id}
+        name={f[:username].name}
+        type="text"
+        value={Phoenix.HTML.Form.normalize_value("text", f[:username].value)}
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        required
+        minlength="2"
+        maxlength="24"
+      />
+      <.error_list field={f[:username]} />
+
+      <label for={f[:email].id}>Email <span class="hint">optional</span></label>
+      <input
+        id={f[:email].id}
+        name={f[:email].name}
+        type="email"
+        value={Phoenix.HTML.Form.normalize_value("email", f[:email].value)}
+        autocomplete="email"
+        maxlength="160"
+      />
+      <.error_list field={f[:email]} />
+
+      <label for={f[:password].id}>
+        Password
+        <span class="hint">
+          at least {MicuPoker.Accounts.User.min_password_length()} characters
+        </span>
+      </label>
+      <input
+        id={f[:password].id}
+        name={f[:password].name}
+        type="password"
+        autocomplete="new-password"
+        required
+        minlength={MicuPoker.Accounts.User.min_password_length()}
+        maxlength="200"
+      />
+      <.error_list field={f[:password]} />
+
+      <label for={f[:password_confirmation].id}>Repeat password</label>
+      <input
+        id={f[:password_confirmation].id}
+        name={f[:password_confirmation].name}
+        type="password"
+        autocomplete="new-password"
+        required
+        maxlength="200"
+      />
+      <.error_list field={f[:password_confirmation]} />
+
+      <button type="submit" class="primary">
+        {if @upgrade?, do: "Keep this identity", else: "Create account"}
+      </button>
+    </.form>
+
+    <div class="auth-alt">
+      <p>Already registered?</p>
+      <.link navigate={~p"/login"}>Sign in</.link>
+      <span aria-hidden="true">·</span>
+      <.link navigate={~p"/lobby"}>Play as guest</.link>
+    </div>
+  </section>
+</main>

@@ -1,6 +1,8 @@
 defmodule MicuPokerWeb.Router do
   use MicuPokerWeb, :router
 
+  import MicuPokerWeb.UserAuth, only: [fetch_current_user: 2]
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -9,10 +11,21 @@ defmodule MicuPokerWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers, %{"x-frame-options" => "DENY"}
     plug MicuPokerWeb.Plugs.SecurityHeaders
+    plug :fetch_current_user
   end
 
+  # Creates a throwaway identity for visitors who are not signed in. Only on app
+  # routes: public pages must not insert a users row for every crawler hit.
   pipeline :guest_browser do
     plug MicuPokerWeb.Plugs.GuestSession
+  end
+
+  pipeline :auth_writes do
+    plug MicuPokerWeb.Plugs.RateLimit,
+      bucket: :auth_write,
+      limit: 20,
+      window_ms: 60_000,
+      message: "Too many attempts from this network. Wait a minute and try again."
   end
 
   pipeline :api do
@@ -44,6 +57,17 @@ defmodule MicuPokerWeb.Router do
 
     get "/", PageController, :home
     get "/docs", DocsController, :show
+    delete "/logout", SessionController, :delete
+    post "/logout", SessionController, :delete
+  end
+
+  scope "/", MicuPokerWeb do
+    pipe_through [:browser, :auth_writes]
+
+    get "/login", SessionController, :new
+    post "/login", SessionController, :create
+    get "/register", RegistrationController, :new
+    post "/register", RegistrationController, :create
   end
 
   scope "/", MicuPokerWeb do
@@ -52,6 +76,8 @@ defmodule MicuPokerWeb.Router do
     post "/rooms", RoomController, :create
     post "/rooms/:id/join", RoomController, :join
     post "/rooms/:id/leave", RoomController, :leave
+    get "/rooms/:id/unlock", RoomController, :unlock
+    post "/rooms/:id/unlock", RoomController, :submit_unlock
   end
 
   scope "/", MicuPokerWeb do

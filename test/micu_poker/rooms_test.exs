@@ -207,23 +207,79 @@ defmodule MicuPoker.RoomsTest do
     end)
   end
 
-  test "room password input is ignored until protected rooms are implemented" do
-    {:ok, user} = Accounts.create_guest_user()
+  describe "room passwords" do
+    setup do
+      {:ok, user} = Accounts.create_guest_user()
+      %{user: user}
+    end
 
-    assert {:ok, room} =
-             Rooms.create_room(
-               %{
-                 "name" => "No False Password",
-                 "max_players" => "6",
-                 "small_blind" => "5",
-                 "big_blind" => "10",
-                 "starting_chips" => "1000",
-                 "password" => "not-stored"
-               },
-               user.id
-             )
+    defp create_with_password(user, name, password) do
+      Rooms.create_room(
+        %{
+          "name" => name,
+          "max_players" => "6",
+          "small_blind" => "5",
+          "big_blind" => "10",
+          "starting_chips" => "1000",
+          "password" => password
+        },
+        user.id
+      )
+    end
 
-    assert room.password_hash == nil
+    test "a room without a password stays public", %{user: user} do
+      assert {:ok, room} = create_with_password(user, "Public Table", nil)
+
+      assert room.password_hash == nil
+      refute Rooms.protected?(room)
+      assert Rooms.password_matches?(room, "anything")
+    end
+
+    test "a blank password is treated as no password, not as an empty one", %{user: user} do
+      assert {:ok, room} = create_with_password(user, "Blank Password", "   ")
+
+      assert room.password_hash == nil
+      refute Rooms.protected?(room)
+    end
+
+    test "a password is stored hashed, never in the clear", %{user: user} do
+      assert {:ok, room} = create_with_password(user, "Private Table", "table-secret")
+
+      assert Rooms.protected?(room)
+      assert is_binary(room.password_hash)
+      refute room.password_hash =~ "table-secret"
+      assert room.password_hash =~ "pbkdf2-sha512$"
+    end
+
+    test "the virtual password is not kept on the returned struct", %{user: user} do
+      assert {:ok, room} = create_with_password(user, "No Echo Table", "table-secret")
+
+      assert room.password == nil
+    end
+
+    test "only the correct password matches", %{user: user} do
+      assert {:ok, room} = create_with_password(user, "Match Table", "table-secret")
+
+      assert Rooms.password_matches?(room, "table-secret")
+      refute Rooms.password_matches?(room, "Table-Secret")
+      refute Rooms.password_matches?(room, "")
+      refute Rooms.password_matches?(room, nil)
+    end
+
+    test "a too-short password is rejected", %{user: user} do
+      assert {:error, changeset} = create_with_password(user, "Short Password", "ab")
+
+      assert %{password: [_message | _]} = errors_on(changeset)
+    end
+
+    test "reloading the room preserves the hash", %{user: user} do
+      assert {:ok, room} = create_with_password(user, "Reload Table", "table-secret")
+
+      reloaded = Rooms.get_room!(room.id)
+
+      assert Rooms.protected?(reloaded)
+      assert Rooms.password_matches?(reloaded, "table-secret")
+    end
   end
 
   test "expire stale rooms completes rooms and releases seats" do

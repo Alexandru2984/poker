@@ -1,32 +1,29 @@
 defmodule MicuPokerWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :micu_poker
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
-  @session_options [
-    store: :cookie,
-    key: "_micu_poker_key",
-    signing_salt: "X3DyCqDf",
-    same_site: "Lax"
-  ]
+  # Session options live in config so `:secure` can be switched on for prod
+  # without forking this module. The cookie is signed *and* encrypted, so the
+  # session payload (guest id, auth token) is opaque to the browser.
+  @session_options Application.compile_env!(:micu_poker, :session_options)
+
+  # `:peer_data` and `:x_headers` let socket transports resolve the real client
+  # IP through MicuPokerWeb.Plugs.RemoteIp; without them every WebSocket looks
+  # like it originated from the nginx loopback address.
+  @connect_info [:peer_data, :x_headers, :uri, session: @session_options]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: @connect_info],
+    longpoll: [connect_info: @connect_info]
 
   socket "/socket", MicuPokerWeb.UserSocket,
-    websocket: [connect_info: [session: @session_options]],
+    websocket: [connect_info: @connect_info],
     longpoll: false
 
   # Serve at "/" the static files from "priv/static" directory.
-  #
-  # You should set gzip to true if you are running phx.digest
-  # when deploying your static files in production.
   plug Plug.Static,
     at: "/",
     from: :micu_poker,
-    gzip: false,
+    gzip: true,
     only: MicuPokerWeb.static_paths()
 
   # Code reloading can be explicitly enabled under the
@@ -43,11 +40,17 @@ defmodule MicuPokerWeb.Endpoint do
     cookie_key: "request_logger"
 
   plug Plug.RequestId
+
+  # Must run before anything that logs or rate limits, otherwise every request
+  # is attributed to the nginx loopback address.
+  plug MicuPokerWeb.Plugs.RemoteIp
+
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
+    length: 512_000,
     json_decoder: Phoenix.json_library()
 
   plug Plug.MethodOverride

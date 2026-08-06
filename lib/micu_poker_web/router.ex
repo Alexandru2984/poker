@@ -8,6 +8,7 @@ defmodule MicuPokerWeb.Router do
     plug :put_root_layout, html: {MicuPokerWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers, %{"x-frame-options" => "DENY"}
+    plug MicuPokerWeb.Plugs.SecurityHeaders
   end
 
   pipeline :guest_browser do
@@ -17,10 +18,25 @@ defmodule MicuPokerWeb.Router do
   pipeline :api do
     plug :accepts, ["json"]
     plug :fetch_session
+
+    plug MicuPokerWeb.Plugs.RateLimit,
+      bucket: :public_api,
+      limit: 120,
+      window_ms: 60_000
   end
 
   pipeline :health_api do
     plug :accepts, ["json"]
+  end
+
+  # Room creation writes to the database and counts against MAX_ROOMS, so it is
+  # the cheapest endpoint to abuse. Keep it on a much tighter budget than reads.
+  pipeline :room_writes do
+    plug MicuPokerWeb.Plugs.RateLimit,
+      bucket: :room_create,
+      limit: 10,
+      window_ms: 60_000,
+      message: "You are creating or joining tables too quickly. Wait a moment."
   end
 
   scope "/", MicuPokerWeb do
@@ -31,11 +47,15 @@ defmodule MicuPokerWeb.Router do
   end
 
   scope "/", MicuPokerWeb do
-    pipe_through [:browser, :guest_browser]
+    pipe_through [:browser, :guest_browser, :room_writes]
 
     post "/rooms", RoomController, :create
     post "/rooms/:id/join", RoomController, :join
     post "/rooms/:id/leave", RoomController, :leave
+  end
+
+  scope "/", MicuPokerWeb do
+    pipe_through [:browser, :guest_browser]
 
     live_session :guest, on_mount: [{MicuPokerWeb.UserAuth, :default}] do
       live "/lobby", LobbyLive, :index

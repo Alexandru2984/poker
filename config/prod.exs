@@ -8,6 +8,20 @@ import Config
 config :micu_poker, MicuPokerWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json"
 
+# The public origin is HTTPS-only behind nginx, so the session cookie must never
+# be sent in the clear and HSTS should be advertised.
+config :micu_poker, :session_options,
+  store: :cookie,
+  key: "_micu_poker_key",
+  signing_salt: "X3DyCqDf",
+  encryption_salt: "qYb2Rn7T",
+  same_site: "Lax",
+  http_only: true,
+  secure: true,
+  max_age: 60 * 60 * 24 * 30
+
+config :micu_poker, hsts_enabled: true
+
 # Configures Swoosh API Client
 config :swoosh, api_client: Swoosh.ApiClient.Finch, finch_name: MicuPoker.Finch
 

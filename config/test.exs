@@ -25,6 +25,10 @@ config :micu_poker, MicuPoker.Mailer, adapter: Swoosh.Adapters.Test
 
 config :micu_poker, room_janitor_enabled: false
 
+# The limiter's ETS table is global, so leaving it on would let unrelated async
+# suites drain each other's budgets. Tests that exercise limits switch it on.
+config :micu_poker, rate_limiting_enabled: false
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

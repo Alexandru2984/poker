@@ -11,6 +11,18 @@ config :micu_poker,
   ecto_repos: [MicuPoker.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Signed *and* encrypted session cookie. `secure: true` is switched on in prod,
+# where the app is only ever reachable over HTTPS through nginx.
+config :micu_poker, :session_options,
+  store: :cookie,
+  key: "_micu_poker_key",
+  signing_salt: "X3DyCqDf",
+  encryption_salt: "qYb2Rn7T",
+  same_site: "Lax",
+  http_only: true,
+  secure: false,
+  max_age: 60 * 60 * 24 * 30
+
 # Configures the endpoint
 config :micu_poker, MicuPokerWeb.Endpoint,
   url: [host: "localhost"],

@@ -59,16 +59,40 @@ if config_env() == :prod do
 
   config :micu_poker, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # WebSocket origin allow-list. Defaults to the public host only; extra origins
+  # (staging, alternate domains) can be added with a comma separated CHECK_ORIGIN.
+  check_origin =
+    case System.get_env("CHECK_ORIGIN") do
+      nil ->
+        ["https://#{host}", "//#{host}"]
+
+      value ->
+        value
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+    end
+
+  # Only forwarded headers arriving from these peers are trusted when resolving
+  # the real client IP. nginx runs on loopback; Cloudflare sits in front of it.
+  trusted_proxies =
+    (System.get_env("TRUSTED_PROXIES") || "127.0.0.1/32,::1/128")
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+
+  config :micu_poker,
+    trusted_proxies: trusted_proxies,
+    trust_cloudflare: System.get_env("TRUST_CLOUDFLARE", "true") in ~w(true 1 yes)
+
   config :micu_poker, MicuPokerWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
+      # Bound to loopback: nginx is the only public entry point.
       ip: bind_ip,
       port: port
     ],
+    check_origin: check_origin,
     secret_key_base: secret_key_base
 
   # ## SSL Support

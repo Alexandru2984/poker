@@ -10,8 +10,25 @@ defmodule MicuPoker.Accounts do
 
   @default_chips 1000
 
-  def get_user(id), do: Repo.get(User, id)
+  def get_user(nil), do: nil
 
+  def get_user(id) when is_integer(id), do: Repo.get(User, id)
+
+  def get_user(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {value, ""} when value > 0 -> Repo.get(User, value)
+      _other -> nil
+    end
+  end
+
+  def get_user(_id), do: nil
+
+  @doc """
+  Returns the stored user for `id`, creating a guest only when none exists.
+
+  Prefer `get_user/1` on paths that cannot persist a new id back into the
+  session: creating a user there produces an orphan row on every request.
+  """
   def ensure_guest_user(nil), do: create_guest_user()
 
   def ensure_guest_user(id) do

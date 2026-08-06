@@ -12,6 +12,7 @@ defmodule MicuPoker.Application do
       MicuPoker.Repo,
       {DNSCluster, query: Application.get_env(:micu_poker, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: MicuPoker.PubSub},
+      MicuPoker.RateLimiter,
       {Registry, keys: :unique, name: MicuPoker.TableRegistry},
       MicuPoker.Poker.TableSupervisor,
       MicuPoker.Rooms.RoomJanitor,

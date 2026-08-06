@@ -9,6 +9,8 @@ defmodule MicuPoker.Poker.TableServer do
   alias MicuPoker.Rooms
 
   @timeout_tick :turn_timeout
+  @call_timeout 8_000
+  @idle_check_interval_ms :timer.minutes(5)
 
   def start_link(room_id) do
     GenServer.start_link(__MODULE__, room_id, name: via(room_id))
@@ -16,20 +18,36 @@ defmodule MicuPoker.Poker.TableServer do
 
   def via(room_id), do: {:via, Registry, {MicuPoker.TableRegistry, room_id}}
 
-  def join(room_id, user_id), do: GenServer.call(via(room_id), {:join, user_id})
-  def connect(room_id, user_id, ref), do: GenServer.call(via(room_id), {:connect, user_id, ref})
-  def disconnect(room_id, user_id), do: GenServer.call(via(room_id), {:disconnect, user_id})
-
-  def disconnect(room_id, user_id, ref),
-    do: GenServer.call(via(room_id), {:disconnect, user_id, ref})
-
-  def leave(room_id, user_id), do: GenServer.call(via(room_id), {:leave, user_id})
-  def state(room_id, viewer_id \\ nil), do: GenServer.call(via(room_id), {:state, viewer_id})
+  def join(room_id, user_id), do: call(room_id, {:join, user_id})
+  def connect(room_id, user_id, ref), do: call(room_id, {:connect, user_id, ref})
+  def disconnect(room_id, user_id), do: call(room_id, {:disconnect, user_id})
+  def disconnect(room_id, user_id, ref), do: call(room_id, {:disconnect, user_id, ref})
+  def leave(room_id, user_id), do: call(room_id, {:leave, user_id})
 
   def act(room_id, user_id, action, amount \\ 0),
-    do: GenServer.call(via(room_id), {:act, user_id, action, amount})
+    do: call(room_id, {:act, user_id, action, amount})
 
-  def chat(room_id, user_id, message), do: GenServer.call(via(room_id), {:chat, user_id, message})
+  def chat(room_id, user_id, message), do: call(room_id, {:chat, user_id, message})
+
+  def state(room_id, viewer_id \\ nil) do
+    case call(room_id, {:state, viewer_id}) do
+      {:error, :table_unavailable} -> nil
+      state -> state
+    end
+  end
+
+  # A table that is restarting, overloaded or already gone must not take the
+  # caller down with it: LiveViews and channels are supervised per connection,
+  # and an exit here would drop a player's whole session.
+  defp call(room_id, message) do
+    GenServer.call(via(room_id), message, @call_timeout)
+  catch
+    :exit, {reason, _details} when reason in [:noproc, :normal, :shutdown, :timeout] ->
+      {:error, :table_unavailable}
+
+    :exit, {{:shutdown, _reason}, _details} ->
+      {:error, :table_unavailable}
+  end
 
   @impl true
   def init(room_id) do
@@ -62,8 +80,11 @@ defmodule MicuPoker.Poker.TableServer do
       rate_limits: %{chat: %{}, action: %{}},
       log: ["MicuPoker table opened. Play-money chips only; no real-world value."],
       chat: [],
+      last_activity_at: System.monotonic_time(:millisecond),
       valid_actions_fun: &__MODULE__.valid_actions/2
     }
+
+    schedule_idle_check()
 
     {:ok, maybe_start_hand(state) |> sync_room_status()}
   end
@@ -169,7 +190,7 @@ defmodule MicuPoker.Poker.TableServer do
          {:ok, clean} <- clean_message(message),
          {:ok, state} <- allow_rate(state, :chat, user_id) do
       item = %{username: player.username, message: clean, at: DateTime.utc_now(:second)}
-      new_state = %{state | chat: [item | state.chat] |> Enum.take(40)}
+      new_state = touch(%{state | chat: [item | state.chat] |> Enum.take(40)})
       broadcast(new_state)
       {:reply, :ok, new_state}
     else
@@ -185,6 +206,7 @@ defmodule MicuPoker.Poker.TableServer do
       {:ok, limited_state} ->
         case apply_action(limited_state, user_id, action, amount) do
           {:ok, new_state} ->
+            new_state = touch(new_state)
             broadcast(new_state)
             {:reply, :ok, new_state}
 
@@ -244,7 +266,49 @@ defmodule MicuPoker.Poker.TableServer do
     end
   end
 
+  # A table process is started on demand for any room and used to live forever,
+  # so a burst of visited rooms leaked one GenServer each. An empty table now
+  # shuts itself down; the next visitor starts a fresh one from the database.
+  def handle_info(:check_idle, state) do
+    schedule_idle_check()
+
+    if idle?(state) do
+      {:stop, :normal, state}
+    else
+      {:noreply, prune_rate_limits(state)}
+    end
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp schedule_idle_check, do: Process.send_after(self(), :check_idle, @idle_check_interval_ms)
+
+  defp idle?(state) do
+    idle_for = System.monotonic_time(:millisecond) - state.last_activity_at
+
+    Enum.empty?(state.connections) and state.stage in [:waiting, :complete, :showdown] and
+      idle_for >= idle_shutdown_ms()
+  end
+
+  defp idle_shutdown_ms do
+    minutes = int_env("TABLE_IDLE_SHUTDOWN_MINUTES", 20)
+    minutes * 60 * 1_000
+  end
+
+  defp touch(state), do: %{state | last_activity_at: System.monotonic_time(:millisecond)}
+
+  # Rate-limit stamps are keyed by user id and used to survive every player who
+  # ever sat down. Drop entries for anyone no longer at the table.
+  defp prune_rate_limits(state) do
+    seated = MapSet.new(state.players, & &1.user_id)
+
+    pruned =
+      Map.new(state.rate_limits, fn {bucket, stamps} ->
+        {bucket, Map.filter(stamps, fn {user_id, _at} -> MapSet.member?(seated, user_id) end)}
+      end)
+
+    %{state | rate_limits: pruned}
+  end
 
   @impl true
   def terminate(_reason, state) do
@@ -809,14 +873,19 @@ defmodule MicuPoker.Poker.TableServer do
     %{state | next_hand_ref: {timer_ref, token}}
   end
 
-  defp next_hand_delay_ms do
-    System.get_env("NEXT_HAND_DELAY_MS", "4000") |> String.to_integer()
-  rescue
-    _ -> 4000
+  defp next_hand_delay_ms, do: int_env("NEXT_HAND_DELAY_MS", 4000)
+
+  # A malformed environment variable used to raise inside the table process and
+  # take the whole hand down with it. Fall back to the default instead.
+  defp int_env(name, default) do
+    case Integer.parse(System.get_env(name, "")) do
+      {value, ""} when value >= 0 -> value
+      _invalid -> default
+    end
   end
 
   defp schedule_timer(state) do
-    seconds = System.get_env("TURN_TIMEOUT_SECONDS", "30") |> String.to_integer()
+    seconds = int_env("TURN_TIMEOUT_SECONDS", 30)
     token = make_ref()
     timer_ref = Process.send_after(self(), {@timeout_tick, token}, seconds * 1_000)
 
@@ -896,7 +965,7 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp clean_message(message) do
-    max = System.get_env("MAX_CHAT_MESSAGE_LENGTH", "300") |> String.to_integer()
+    max = int_env("MAX_CHAT_MESSAGE_LENGTH", 300)
     clean = message |> to_string() |> String.trim()
 
     cond do
@@ -919,11 +988,8 @@ defmodule MicuPoker.Poker.TableServer do
     end
   end
 
-  defp rate_limit_interval(:chat),
-    do: System.get_env("CHAT_RATE_LIMIT_MS", "1200") |> String.to_integer()
-
-  defp rate_limit_interval(:action),
-    do: System.get_env("ACTION_RATE_LIMIT_MS", "400") |> String.to_integer()
+  defp rate_limit_interval(:chat), do: int_env("CHAT_RATE_LIMIT_MS", 1200)
+  defp rate_limit_interval(:action), do: int_env("ACTION_RATE_LIMIT_MS", 400)
 
   defp schedule_disconnect_grace(state, user_id) do
     case Enum.find(state.players, &(&1.user_id == user_id)) do
@@ -932,7 +998,7 @@ defmodule MicuPoker.Poker.TableServer do
 
       _player ->
         state = cancel_disconnect_grace(state, user_id)
-        seconds = System.get_env("DISCONNECT_GRACE_SECONDS", "60") |> String.to_integer()
+        seconds = int_env("DISCONNECT_GRACE_SECONDS", 60)
         token = make_ref()
 
         timer_ref =
@@ -1033,11 +1099,19 @@ defmodule MicuPoker.Poker.TableServer do
     end
   end
 
+  # Called on every join, connect, disconnect and deal. Skip the write when the
+  # status has not actually moved, so a busy table is not issuing a redundant
+  # UPDATE from inside the process that also owns the hand.
   defp sync_room_status(state) do
     status = room_status(state)
-    Rooms.update_status(state.room_id, status)
+    state = touch(state)
 
-    %{state | room: %{state.room | status: status}}
+    if status == state.room.status do
+      state
+    else
+      Rooms.update_status(state.room_id, status)
+      %{state | room: %{state.room | status: status}}
+    end
   end
 
   defp room_status(state) do

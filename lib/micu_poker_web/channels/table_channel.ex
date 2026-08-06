@@ -35,7 +35,10 @@ defmodule MicuPokerWeb.TableChannel do
 
   @impl true
   def handle_in("state", _payload, socket) do
-    {:reply, {:ok, TableServer.state(socket.assigns.room_id, socket.assigns.user_id)}, socket}
+    case current_state(socket) do
+      nil -> {:reply, {:error, %{reason: "table_unavailable"}}, socket}
+      state -> {:reply, {:ok, state}, socket}
+    end
   end
 
   def handle_in("action", %{"action" => action} = payload, socket) do
@@ -63,8 +66,16 @@ defmodule MicuPokerWeb.TableChannel do
 
   @impl true
   def handle_info({:table_state, _state}, socket) do
-    push(socket, "state", TableServer.state(socket.assigns.room_id, socket.assigns.user_id))
-    {:noreply, socket}
+    # The broadcast is only a signal; each client pulls its own personalised
+    # view so nobody receives another player's hole cards.
+    case current_state(socket) do
+      nil -> {:noreply, socket}
+      state -> {:noreply, push(socket, "state", state)}
+    end
+  end
+
+  defp current_state(socket) do
+    TableServer.state(socket.assigns.room_id, socket.assigns.user_id)
   end
 
   @impl true

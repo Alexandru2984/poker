@@ -81,15 +81,10 @@ defmodule MicuPokerWeb.TableLive do
 
     case TableServer.act(socket.assigns.room_id, socket.assigns.current_user.id, action, amount) do
       :ok ->
-        {:noreply,
-         assign(
-           socket,
-           :table,
-           TableServer.state(socket.assigns.room_id, socket.assigns.current_user.id)
-         )}
+        {:noreply, refresh_table(socket)}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Action rejected: #{reason}")}
+        {:noreply, put_flash(socket, :error, "Action rejected: #{human_error(reason)}")}
     end
   end
 
@@ -110,17 +105,21 @@ defmodule MicuPokerWeb.TableLive do
 
   @impl true
   def handle_info({:table_state, _table}, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :table,
-       TableServer.state(socket.assigns.room_id, socket.assigns.current_user.id)
-     )}
+    {:noreply, refresh_table(socket)}
   end
 
   def handle_info(:tick, socket) do
     Process.send_after(self(), :tick, 1_000)
     {:noreply, assign(socket, :now, DateTime.utc_now(:second))}
+  end
+
+  # The table process can be restarting or already shut down. Keep rendering the
+  # last known view rather than crashing the player's LiveView.
+  defp refresh_table(socket) do
+    case TableServer.state(socket.assigns.room_id, socket.assigns.current_user.id) do
+      nil -> socket
+      table -> assign(socket, :table, table)
+    end
   end
 
   @impl true
@@ -176,6 +175,15 @@ defmodule MicuPokerWeb.TableLive do
   defp human_error(:message_too_long), do: "message is too long"
   defp human_error(:empty_message), do: "message is empty"
   defp human_error(:rate_limited), do: "slow down"
+  defp human_error(:not_your_turn), do: "it is not your turn"
+  defp human_error(:not_connected), do: "you are not connected to this table"
+  defp human_error(:not_seated), do: "you are not seated at this table"
+  defp human_error(:invalid_action), do: "that action is not available"
+  defp human_error(:bet_too_small), do: "that bet is below the minimum"
+  defp human_error(:bet_too_large), do: "that bet is above your stack"
+  defp human_error(:raise_too_small), do: "that raise is below the minimum"
+  defp human_error(:raise_too_large), do: "that raise is above your stack"
+  defp human_error(:table_unavailable), do: "the table is restarting, try again"
   defp human_error(reason), do: to_string(reason)
 
   defp default_bet_amount(table, room) do

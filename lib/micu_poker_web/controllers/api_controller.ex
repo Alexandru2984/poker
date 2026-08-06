@@ -10,9 +10,10 @@ defmodule MicuPokerWeb.ApiController do
 
   def room(conn, %{"id" => id}) do
     with {:ok, room} <- Rooms.fetch_room(id) do
+      # Read-only: never start a table process from a public endpoint.
       table =
         case TableSupervisor.lookup_table(room.id) do
-          {:ok, _pid} -> TableServer.state(room.id, current_user_id(conn))
+          {:ok, _pid} -> public_table(room.id, current_user_id(conn))
           :not_found -> nil
         end
 
@@ -26,6 +27,23 @@ defmodule MicuPokerWeb.ApiController do
   end
 
   def stats(conn, _params), do: json(conn, Rooms.stats())
+
+  defp public_table(room_id, viewer_id) do
+    case TableServer.state(room_id, viewer_id) do
+      nil -> nil
+      table -> redact_for_outsiders(table, viewer_id)
+    end
+  end
+
+  # Table chat and the action log are for people at the table. Anyone can call
+  # this endpoint without a session, so strip both unless the caller is seated.
+  defp redact_for_outsiders(table, viewer_id) do
+    if viewer_id && Enum.any?(table.players, &Map.get(&1, :is_me, false)) do
+      table
+    else
+      %{table | chat: [], log: []}
+    end
+  end
 
   defp current_user_id(conn), do: conn.assigns[:current_user] && conn.assigns.current_user.id
 

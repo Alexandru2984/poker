@@ -89,6 +89,40 @@ defmodule MicuPokerWeb.ApiControllerTest do
     end
   end
 
+  test "public room API hides table chat and log from callers who are not seated", %{
+    conn: conn
+  } do
+    {:ok, user_one} = Accounts.create_guest_user()
+    {:ok, user_two} = Accounts.create_guest_user()
+
+    {:ok, room} =
+      Rooms.create_room(
+        %{
+          "name" => "API Chat Privacy Room",
+          "max_players" => "2",
+          "small_blind" => "5",
+          "big_blind" => "10",
+          "starting_chips" => "1000"
+        },
+        user_one.id
+      )
+
+    start_supervised!({TableServer, room.id})
+    assert {:ok, _state} = join_connected(room, user_one)
+    assert {:ok, _state} = join_connected(room, user_two)
+    assert :ok = TableServer.chat(room.id, user_one.id, "sensitive table talk")
+
+    # The players themselves still see it.
+    assert TableServer.state(room.id, user_one.id).chat != []
+
+    conn = get(conn, ~p"/api/rooms/#{room.id}")
+    assert %{"table" => table} = json_response(conn, 200)
+
+    assert table["chat"] == []
+    assert table["log"] == []
+    refute Jason.encode!(table) =~ "sensitive table talk"
+  end
+
   defp join_connected(room, user) do
     assert {:ok, _state} = TableServer.join(room.id, user.id)
     TableServer.connect(room.id, user.id, make_ref())

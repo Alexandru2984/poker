@@ -128,10 +128,10 @@
         <%= for room <- filtered_rooms(@rooms, @filter) do %>
           <div class="rooms-row">
             <strong>
-              {room.name}<%= if MicuPoker.Rooms.protected?(room) do %><span
-                  class="lock-badge"
-                  title="Password protected"
-                >&#128274;</span><% end %>
+              {room.name}
+              <%= if MicuPoker.Rooms.protected?(room) do %>
+                <span class="lock-badge" title="Password protected">&#128274;</span>
+              <% end %>
             </strong>
             <span>{room.player_count}/{room.max_players}</span>
             <span>{room.small_blind}/{room.big_blind}</span>

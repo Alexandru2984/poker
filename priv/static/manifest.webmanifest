@@ -1,0 +1,26 @@
+{
+  "name": "MicuPoker",
+  "short_name": "MicuPoker",
+  "description": "Play-money Texas Hold'em. No deposits, no withdrawals, no real-world value.",
+  "start_url": "/lobby",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08090d",
+  "theme_color": "#0f5c46",
+  "categories": ["games"],
+  "icons": [
+    {
+      "src": "/images/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

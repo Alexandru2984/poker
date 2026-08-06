@@ -31,11 +31,15 @@ defmodule MicuPokerWeb.TableLiveTest do
 
     conn = Plug.Test.init_test_session(conn, guest_user_id: user.id)
 
-    {:ok, _view, html} = live(conn, ~p"/rooms/#{room.id}")
+    {:ok, view, html} = live(conn, ~p"/rooms/#{room.id}")
 
-    assert html =~ "Invite Table"
-    assert html =~ "Table ##{room.id}"
-    assert html =~ "/rooms/#{room.id}"
+    assert html =~ "##{room.id}"
+
+    # The invite link lives in the table panel, which is not the default tab.
+    info = render_click(view, :panel, %{"panel" => "info"})
+
+    assert info =~ "Invite link"
+    assert info =~ "/rooms/#{room.id}"
   end
 
   test "table page redirects invalid room ids to lobby", %{conn: conn} do
@@ -81,10 +85,8 @@ defmodule MicuPokerWeb.TableLiveTest do
 
     {:ok, _view, html} = live(conn, ~p"/rooms/#{room.id}")
 
-    assert html =~ "Invite Table"
-    assert html =~ "Your Hand"
-    assert html =~ "Waiting next hand"
-    assert html =~ "Table ##{room.id}"
+    assert html =~ "Waiting for the next hand"
+    assert html =~ "##{room.id}"
 
     view_one = TableServer.state(room.id, user_one.id)
     assert own_player(view_one).cards |> length() == 2
@@ -118,7 +120,8 @@ defmodule MicuPokerWeb.TableLiveTest do
     user_one_view = TableServer.state(room.id, user_one.id)
     own_cards = own_player(user_one_view).cards
 
-    assert html =~ "Your Hand"
+    assert html =~ "hero-panel"
+    assert html =~ "your-cards"
     assert length(own_cards) == 2
 
     for card <- own_cards do

@@ -1,15 +1,39 @@
 <!DOCTYPE html>
-<html lang="en" class="[scrollbar-gutter:stable]">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <%= if assigns[:socket_token] do %>
       <meta name="socket-token" content={@socket_token} />
     <% end %>
+
     <.live_title suffix=" · MicuPoker">
-      {assigns[:page_title] || "MicuPoker"}
+      {assigns[:page_title] || "Play-money Texas Hold'em"}
     </.live_title>
+
+    <meta
+      name="description"
+      content="Play-money Texas Hold'em in the browser. Server-authoritative dealing, side pots and a real betting clock. No deposits, no withdrawals, no real-world value."
+    />
+    <meta name="theme-color" content="#0f5c46" />
+    <meta name="color-scheme" content="dark" />
+
+    <meta property="og:site_name" content="MicuPoker" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={assigns[:page_title] || "MicuPoker"} />
+    <meta
+      property="og:description"
+      content="Play-money Texas Hold'em in the browser. No deposits, no withdrawals, no real-world value."
+    />
+    <meta property="og:image" content={~p"/images/icon.svg"} />
+    <meta name="twitter:card" content="summary" />
+
+    <link rel="icon" href={~p"/favicon.ico"} sizes="32x32" />
+    <link rel="icon" href={~p"/images/icon.svg"} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={~p"/images/icon.svg"} />
+    <link rel="manifest" href={~p"/manifest.webmanifest"} />
+
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
     </script>

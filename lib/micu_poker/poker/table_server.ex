@@ -5,7 +5,7 @@ defmodule MicuPoker.Poker.TableServer do
 
   use GenServer
 
-  alias MicuPoker.Poker.{Deck, Pot, TableState}
+  alias MicuPoker.Poker.{Betting, Deck, Pot, TableState}
   alias MicuPoker.Rooms
 
   @timeout_tick :turn_timeout
@@ -48,12 +48,12 @@ defmodule MicuPoker.Poker.TableServer do
       hand: nil,
       current_bet: 0,
       min_raise: room.big_blind,
-      dealer_index: -1,
       dealer_seat: nil,
       small_blind_seat: nil,
       big_blind_seat: nil,
       turn_seat: nil,
       acted: MapSet.new(),
+      raise_closed: MapSet.new(),
       action_deadline: nil,
       timer_ref: nil,
       next_hand_ref: nil,
@@ -259,40 +259,16 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   def valid_actions(state, player) do
-    cond do
-      state.stage not in [:preflop, :flop, :turn, :river] ->
-        %{actions: []}
-
-      not player.in_hand ->
-        %{actions: []}
-
-      player.seat_number != state.turn_seat or player.folded or player.all_in ->
-        %{actions: []}
-
-      true ->
-        call = call_amount(state, player)
-        max_total = player.bet + player.stack
-
-        actions =
-          [:fold]
-          |> maybe_add(call == 0, :check)
-          |> maybe_add(call > 0 and player.stack > 0, :call)
-          |> maybe_add(state.current_bet == 0 and player.stack >= state.room.big_blind, :bet)
-          |> maybe_add(
-            state.current_bet > 0 and max_total >= state.current_bet + state.min_raise,
-            :raise
-          )
-          |> maybe_add(player.stack > 0, :all_in)
-          |> Enum.reverse()
-
-        %{
-          actions: actions,
-          call_amount: min(call, player.stack),
-          min_bet: state.room.big_blind,
-          min_raise_to: state.current_bet + state.min_raise,
-          max_total_bet: max_total
-        }
+    if actionable?(state, player) do
+      Betting.valid_actions(state, player, state.room.big_blind)
+    else
+      %{actions: []}
     end
+  end
+
+  defp actionable?(state, player) do
+    state.stage in [:preflop, :flop, :turn, :river] and player.in_hand and
+      player.seat_number == state.turn_seat and not player.folded and not player.all_in
   end
 
   defp apply_action(state, user_id, action, amount, timeout? \\ false) do
@@ -338,30 +314,23 @@ defmodule MicuPoker.Poker.TableServer do
   defp commit_action(state, player, :bet, amount) do
     state
     |> take_chips(player.user_id, amount)
-    |> Map.merge(%{current_bet: amount, min_raise: amount, acted: MapSet.new([player.user_id])})
+    |> Betting.bet(player.user_id, amount)
     |> add_log("#{player.username} bet #{amount}.")
   end
 
   defp commit_action(state, player, :raise, amount) do
-    raise_by = amount - state.current_bet
-
     state
     |> take_chips(player.user_id, amount - player.bet)
-    |> Map.merge(%{
-      current_bet: amount,
-      min_raise: max(raise_by, state.min_raise),
-      acted: MapSet.new([player.user_id])
-    })
+    |> Betting.raise_to(player.user_id, amount)
     |> add_log("#{player.username} raised to #{amount}.")
   end
 
   defp commit_action(state, player, :all_in, _amount) do
     total = player.bet + player.stack
-    raise_by = max(total - state.current_bet, 0)
 
     state
     |> take_chips(player.user_id, player.stack)
-    |> maybe_update_bet(total, raise_by, player.user_id)
+    |> Betting.all_in(player.user_id, total)
     |> add_log("#{player.username} moved all-in for #{total}.")
     |> mark_acted(player.user_id)
   end
@@ -370,23 +339,43 @@ defmodule MicuPoker.Poker.TableServer do
     remaining = active_players(state)
 
     cond do
-      length(remaining) == 1 ->
-        award_without_showdown(state, hd(remaining))
+      # Everyone else folded; the pot is uncontested.
+      length(remaining) <= 1 ->
+        award_uncontested(state)
 
-      Enum.all?(remaining, & &1.all_in) ->
+      # Somebody in this round still owes a decision.
+      not betting_round_complete?(state) ->
+        next_turn(state)
+
+      # The round closed with at most one player holding chips behind, so no
+      # further betting is possible. Run the board out instead of asking that
+      # player to check down every remaining street on their own.
+      Enum.count(remaining, &can_still_bet?/1) <= 1 ->
         state
+        |> return_uncalled_bet()
         |> reveal_remaining_board()
         |> showdown()
 
-      betting_round_complete?(state) ->
-        advance_street(state)
+      state.stage == :river ->
+        state
+        |> return_uncalled_bet()
+        |> showdown()
 
       true ->
-        next_turn(state)
+        advance_street(state)
     end
   end
 
-  defp advance_street(%{stage: :river} = state), do: showdown(state)
+  defp can_still_bet?(player), do: not player.all_in and player.stack > 0
+
+  defp award_uncontested(state) do
+    state = return_uncalled_bet(state)
+
+    case active_players(state) do
+      [winner] -> award_without_showdown(state, winner)
+      _no_single_winner -> state
+    end
+  end
 
   defp advance_street(state) do
     {stage, draw_count} =
@@ -402,15 +391,55 @@ defmodule MicuPoker.Poker.TableServer do
       state
       | stage: stage,
         deck: deck,
-        board: state.board ++ cards,
-        current_bet: 0,
-        min_raise: state.room.big_blind,
-        acted: MapSet.new()
+        board: state.board ++ cards
     }
+    |> Betting.open_round(state.room.big_blind)
     |> reset_player_bets()
     |> add_log("#{String.upcase(to_string(stage))} dealt.")
-    |> next_turn()
+    |> start_street_turn()
   end
+
+  # Chips nobody matched belong to the player who put them in, whether the hand
+  # ends by folds or at showdown. Returning them before settlement keeps the pot
+  # honest, keeps the ledger zero-sum, and removes the possibility of a side pot
+  # whose only eligible player has folded, which would strand chips.
+  defp return_uncalled_bet(state) do
+    contributions =
+      state.players
+      |> Enum.map(&{&1, contribution_of(&1)})
+      |> Enum.filter(fn {_player, total} -> total > 0 end)
+      |> Enum.sort_by(fn {_player, total} -> total end, :desc)
+
+    case contributions do
+      [{player, top}, {_runner_up, second} | _rest] when top > second ->
+        refund(state, player, top - second)
+
+      [{player, top}] when top > 0 ->
+        refund(state, player, top)
+
+      _nothing_to_return ->
+        state
+    end
+  end
+
+  defp refund(state, player, amount) when amount > 0 do
+    state
+    |> update_player(player.user_id, fn current ->
+      %{
+        current
+        | stack: current.stack + amount,
+          bet: max(current.bet - amount, 0),
+          contribution_total: max(contribution_of(current) - amount, 0),
+          all_in: false
+      }
+    end)
+    |> Map.update!(:pot, &max(&1 - amount, 0))
+    |> add_log("#{player.username} takes back #{amount} uncalled.")
+  end
+
+  defp refund(state, _player, _amount), do: state
+
+  defp contribution_of(player), do: Map.get(player, :contribution_total, 0)
 
   defp showdown(state) do
     board = state.board
@@ -529,8 +558,11 @@ defmodule MicuPoker.Poker.TableServer do
         }
       end)
 
-    dealer_index = rem(max(state.dealer_index, -1) + 1, length(players))
-    dealer = Enum.at(players, dealer_index)
+    # The button advances by seat, not by position in this hand's player list.
+    # Indexing into a list that is re-filtered every hand made the button jump
+    # backwards whenever somebody joined or busted out.
+    dealer = next_seated_after(players, state.dealer_seat)
+    dealer_index = Enum.find_index(players, &(&1.seat_number == dealer.seat_number))
     heads_up = length(players) == 2
     small_index = if heads_up, do: dealer_index, else: rem(dealer_index + 1, length(players))
     big_index = rem(small_index + 1, length(players))
@@ -553,13 +585,13 @@ defmodule MicuPoker.Poker.TableServer do
           stage: :preflop,
           hand_number: state.hand_number + 1,
           hand: hand,
-          dealer_index: dealer_index,
           dealer_seat: dealer.seat_number,
           small_blind_seat: small.seat_number,
           big_blind_seat: big.seat_number,
           current_bet: state.room.big_blind,
           min_raise: state.room.big_blind,
           acted: MapSet.new(),
+          raise_closed: MapSet.new(),
           log: Enum.take(state.log, 60)
       }
       |> take_chips(small.user_id, state.room.small_blind)
@@ -568,6 +600,8 @@ defmodule MicuPoker.Poker.TableServer do
         "Hand #{state.hand_number + 1} started. Blinds #{state.room.small_blind}/#{state.room.big_blind}."
       )
 
+    # Preflop action opens to the left of the big blind. Heads-up that wraps
+    # back to the button, who is also the small blind.
     turn_index = rem(big_index + 1, length(players))
 
     %{state | turn_seat: Enum.at(players, turn_index).seat_number}
@@ -575,37 +609,43 @@ defmodule MicuPoker.Poker.TableServer do
     |> sync_room_status()
   end
 
-  defp next_turn(state) do
-    players = ordered_players_from_next_seat(state)
+  # Every street after the flop opens with the first live player to the left of
+  # the button, not with whoever happened to act last on the previous street.
+  defp start_street_turn(state), do: advance_turn(state, state.dealer_seat)
 
-    next =
-      Enum.find(players, fn player ->
-        player.in_hand && !player.folded && !player.all_in && player.stack > 0
-      end)
+  defp next_turn(state), do: advance_turn(state, state.turn_seat)
 
-    if next do
-      %{state | turn_seat: next.seat_number}
-      |> schedule_timer()
-    else
-      state
+  defp advance_turn(state, from_seat) do
+    case Enum.find(players_after_seat(state.players, from_seat), &can_act?/1) do
+      nil -> state
+      next -> schedule_timer(%{state | turn_seat: next.seat_number})
     end
   end
 
-  defp ordered_players_from_next_seat(state) do
-    sorted = Enum.sort_by(state.players, & &1.seat_number)
-    current_index = Enum.find_index(sorted, &(&1.seat_number == state.turn_seat)) || -1
-
-    1..length(sorted)
-    |> Enum.map(fn offset -> Enum.at(sorted, rem(current_index + offset, length(sorted))) end)
+  defp can_act?(player) do
+    player.in_hand && !player.folded && !player.all_in && player.stack > 0
   end
 
-  defp betting_round_complete?(state) do
-    state.players
-    |> Enum.filter(&(&1.in_hand && !&1.folded && !&1.all_in))
-    |> Enum.all?(fn player ->
-      player.bet == state.current_bet && MapSet.member?(state.acted, player.user_id)
-    end)
+  # Seat order starting immediately clockwise of `seat`. Comparing seat numbers
+  # rather than list positions keeps the order stable when the seat itself is
+  # empty, which happens whenever the button sits on a player who has left.
+  defp players_after_seat(players, nil), do: Enum.sort_by(players, & &1.seat_number)
+
+  defp players_after_seat(players, seat) do
+    sorted = Enum.sort_by(players, & &1.seat_number)
+    {at_or_before, after_seat} = Enum.split_with(sorted, &(&1.seat_number <= seat))
+
+    after_seat ++ at_or_before
   end
+
+  defp next_seated_after(players, seat) do
+    case players_after_seat(players, seat) do
+      [next | _rest] -> next
+      [] -> hd(players)
+    end
+  end
+
+  defp betting_round_complete?(state), do: Betting.round_complete?(state, state.players)
 
   defp reveal_remaining_board(state) do
     needed = 5 - length(state.board)
@@ -668,19 +708,6 @@ defmodule MicuPoker.Poker.TableServer do
     |> Map.update!(:pot, &(&1 + taken))
   end
 
-  defp maybe_update_bet(state, total, raise_by, user_id) do
-    if total > state.current_bet do
-      %{
-        state
-        | current_bet: total,
-          min_raise: max(raise_by, state.min_raise),
-          acted: MapSet.new([user_id])
-      }
-    else
-      state
-    end
-  end
-
   defp update_player(state, user_id, fun) do
     %{
       state
@@ -699,7 +726,7 @@ defmodule MicuPoker.Poker.TableServer do
     %{state | players: Enum.map(state.players, &Map.put(&1, :contribution_total, 0))}
   end
 
-  defp mark_acted(state, user_id), do: %{state | acted: MapSet.put(state.acted, user_id)}
+  defp mark_acted(state, user_id), do: Betting.mark_acted(state, user_id)
 
   defp active_players(state), do: Enum.filter(state.players, &(&1.in_hand && !&1.folded))
   defp current_player(state), do: Enum.find(state.players, &(&1.seat_number == state.turn_seat))
@@ -1044,9 +1071,6 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp normalize_amount(_), do: 0
-
-  defp maybe_add(actions, true, action), do: [action | actions]
-  defp maybe_add(actions, false, _action), do: actions
 
   defp broadcast(state) do
     Phoenix.PubSub.broadcast(

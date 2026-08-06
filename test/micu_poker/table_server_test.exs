@@ -295,12 +295,16 @@ defmodule MicuPoker.Poker.TableServerTest do
 
     hand = Repo.one!(Hand)
     assert hand.room_id == room.id
-    assert hand.pot_total == room.small_blind + room.big_blind
+
+    # Heads-up, the small blind folded preflop. The big blind's overlay was
+    # never called, so it comes back before settlement and the pot that is
+    # actually contested is twice the small blind.
+    assert hand.pot_total == room.small_blind * 2
 
     assert [%{"amount" => amount, "hand" => "uncontested", "username" => username} = winner] =
              hand.winner_summary["winners"]
 
-    assert is_integer(amount)
+    assert amount == room.small_blind * 2
     assert is_binary(username)
     refute Map.has_key?(winner, "user_id")
 

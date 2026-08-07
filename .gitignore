@@ -58,3 +58,6 @@ assets/yarn-error.log*
 # OS metadata.
 .DS_Store
 Thumbs.db
+
+# Pre-deploy backups of config and database. Never commit these.
+/.deploy-backup/

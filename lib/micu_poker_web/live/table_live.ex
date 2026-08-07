@@ -3,6 +3,7 @@ defmodule MicuPokerWeb.TableLive do
 
   alias MicuPoker.Poker.{TableServer, TableSupervisor}
   alias MicuPoker.Rooms
+  alias MicuPoker.Stats
   alias MicuPokerWeb.TableLayout
 
   @impl true
@@ -89,6 +90,7 @@ defmodule MicuPokerWeb.TableLive do
      |> assign(:invite_url, MicuPokerWeb.Endpoint.url() <> ~p"/rooms/#{room.id}")
      |> assign(:now, DateTime.utc_now(:second))
      |> assign(:panel, "chat")
+     |> assign(:recent_hands, [])
      |> assign(:chat_message, "")
      |> put_table(table)}
   end
@@ -127,7 +129,17 @@ defmodule MicuPokerWeb.TableLive do
     {:noreply, assign(socket, :bet_amount, amount)}
   end
 
-  def handle_event("panel", %{"panel" => panel}, socket) when panel in ~w(chat log info) do
+  def handle_event("panel", %{"panel" => panel}, socket)
+      when panel in ~w(chat log hands info) do
+    # History is only queried when the tab is actually opened, so the page load
+    # and every table broadcast stay off the database.
+    socket =
+      if panel == "hands" do
+        assign(socket, :recent_hands, Stats.recent_hands(socket.assigns.room_id, 15))
+      else
+        socket
+      end
+
     {:noreply, assign(socket, :panel, panel)}
   end
 

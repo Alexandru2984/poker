@@ -174,7 +174,12 @@
       </section>
 
       <nav class="panel-tabs" role="tablist">
-        <%= for {value, label} <- [{"chat", "Chat"}, {"log", "Log"}, {"info", "Table"}] do %>
+        <%= for {value, label} <- [
+              {"chat", "Chat"},
+              {"log", "Log"},
+              {"hands", "Hands"},
+              {"info", "Table"}
+            ] do %>
           <button
             role="tab"
             phx-click="panel"
@@ -217,6 +222,29 @@
             <div class="hand-log">
               <%= for line <- @table.log do %>
                 <p>{line}</p>
+              <% end %>
+            </div>
+          <% "hands" -> %>
+            <div class="hand-history">
+              <%= for hand <- @recent_hands do %>
+                <article>
+                  <header>
+                    <span class="hand-number">Hand #{hand.hand_number}</span>
+                    <span class="hand-pot">{hand.pot_total}</span>
+                  </header>
+                  <%= if hand.board != [] do %>
+                    <p class="hand-board">{Enum.join(hand.board, " ")}</p>
+                  <% end %>
+                  <%= for winner <- hand.winners do %>
+                    <p class="hand-winner">
+                      <strong>{winner["username"]}</strong>
+                      won {winner["amount"]} with {winner["hand"]}
+                    </p>
+                  <% end %>
+                </article>
+              <% end %>
+              <%= if @recent_hands == [] do %>
+                <p class="muted-note">No finished hands at this table yet.</p>
               <% end %>
             </div>
           <% _info -> %>

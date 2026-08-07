@@ -1419,3 +1419,113 @@ button.primary:hover:not(:disabled) {
   margin-top: 12px;
   width: 100%;
 }
+
+/* --- Stats, leaderboard and hand history --------------------------------- */
+
+.stat-panel {
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.stat-grid div {
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  text-align: center;
+}
+
+.stat-grid strong {
+  display: block;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.stat-grid span {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.up { color: var(--green); }
+.down { color: var(--red); }
+
+.leaderboard-row .rank {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard-row strong .badge {
+  margin-left: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.hand-history {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hand-history article {
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.hand-history header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.hand-history .hand-pot {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.hand-board {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+
+.hand-winner {
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.hand-winner strong {
+  color: var(--gold);
+}
+
+@media (min-width: 641px) {
+  .leaderboard-head,
+  .leaderboard-row {
+    grid-template-columns: 44px 1fr 110px 80px 80px;
+  }
+}

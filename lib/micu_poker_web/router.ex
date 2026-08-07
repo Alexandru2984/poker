@@ -57,6 +57,7 @@ defmodule MicuPokerWeb.Router do
 
     get "/", PageController, :home
     get "/docs", DocsController, :show
+    get "/leaderboard", LeaderboardController, :index
     delete "/logout", SessionController, :delete
     post "/logout", SessionController, :delete
   end
@@ -103,20 +104,52 @@ defmodule MicuPokerWeb.Router do
     get "/api/stats", ApiController, :stats
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
-  if Application.compile_env(:micu_poker, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
-    import Phoenix.LiveDashboard.Router
+  import Phoenix.LiveDashboard.Router
 
+  # LiveDashboard exposes process, memory and query internals, so outside dev it
+  # is only mounted when ADMIN_USER and ADMIN_PASSWORD are both configured, and
+  # then only behind basic auth over HTTPS.
+  scope "/admin" do
+    pipe_through [:browser, :admin_auth]
+
+    live_dashboard "/dashboard",
+      metrics: MicuPokerWeb.Telemetry,
+      ecto_repos: [MicuPoker.Repo]
+  end
+
+  if Application.compile_env(:micu_poker, :dev_routes) do
     scope "/dev" do
       pipe_through :browser
 
-      live_dashboard "/dashboard", metrics: MicuPokerWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+  end
+
+  defp admin_auth(conn, _opts) do
+    case admin_credentials() do
+      {username, password} ->
+        Plug.BasicAuth.basic_auth(conn,
+          username: username,
+          password: password,
+          realm: "MicuPoker"
+        )
+
+      nil ->
+        conn
+        |> Plug.Conn.send_resp(:not_found, "")
+        |> Plug.Conn.halt()
+    end
+  end
+
+  defp admin_credentials do
+    username = System.get_env("ADMIN_USER")
+    password = System.get_env("ADMIN_PASSWORD")
+
+    # A short password here would be brute-forceable; refuse rather than mount a
+    # weakly protected dashboard.
+    if is_binary(username) and is_binary(password) and username != "" and
+         byte_size(password) >= 16 do
+      {username, password}
     end
   end
 end

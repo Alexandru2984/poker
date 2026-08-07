@@ -1,0 +1,76 @@
+<main class="app-shell">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Play-money only</p>
+      <h1>Leaderboard</h1>
+    </div>
+    <nav>
+      <.link navigate={~p"/lobby"}>Lobby</.link>
+      <.link navigate={~p"/docs"}>Docs</.link>
+    </nav>
+  </header>
+
+  <section class="notice">
+    Ranked by chips won at showdown and in uncontested pots. Chips brought in by
+    buying back after busting do not count towards a ranking.
+  </section>
+
+  <%= if @my_stats do %>
+    <section class="stat-panel" aria-label="Your statistics">
+      <h2 class="eyebrow">Your numbers</h2>
+      <div class="stat-grid">
+        <div>
+          <strong class={sign_class(@my_stats.net_chips)}>{signed(@my_stats.net_chips)}</strong>
+          <span>Net chips</span>
+        </div>
+        <div>
+          <strong>{@my_stats.hands_played}</strong>
+          <span>Hands played</span>
+        </div>
+        <div>
+          <strong>{@my_stats.hands_won}</strong>
+          <span>Hands won</span>
+        </div>
+        <div>
+          <strong>{@my_stats.win_rate}%</strong>
+          <span>Win rate</span>
+        </div>
+        <div>
+          <strong>{@my_stats.vpip}%</strong>
+          <span>VPIP</span>
+        </div>
+        <div>
+          <strong>{@my_stats.biggest_pot}</strong>
+          <span>Biggest pot</span>
+        </div>
+      </div>
+    </section>
+  <% end %>
+
+  <section class="room-list">
+    <div class="rooms-table">
+      <div class="rooms-head leaderboard-head">
+        <span>#</span><span>Player</span><span>Net</span><span>Won</span><span>Hands</span>
+      </div>
+
+      <%= for {leader, index} <- Enum.with_index(@leaders, 1) do %>
+        <div class="rooms-row leaderboard-row">
+          <span class="rank">{index}</span>
+          <strong>
+            {leader.username}
+            <%= if leader.is_guest do %>
+              <span class="badge">guest</span>
+            <% end %>
+          </strong>
+          <span class={sign_class(leader.net_chips)}>{signed(leader.net_chips)}</span>
+          <span>{leader.hands_won}</span>
+          <span>{leader.hands_recorded}</span>
+        </div>
+      <% end %>
+
+      <%= if @leaders == [] do %>
+        <div class="empty">No hands have been played yet. Be the first.</div>
+      <% end %>
+    </div>
+  </section>
+</main>

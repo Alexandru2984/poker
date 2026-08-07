@@ -5,6 +5,7 @@
       <h1>MicuPoker</h1>
     </div>
     <nav>
+      <.link navigate={~p"/leaderboard"}>Leaderboard</.link>
       <.link navigate={~p"/docs"}>Docs</.link>
       <%= if @current_user && !@current_user.is_guest do %>
         <.link navigate={~p"/lobby"}>Lobby</.link>
@@ -143,6 +144,7 @@
     <span>MicuPoker &middot; play-money Texas Hold'em</span>
     <span>
       <.link navigate={~p"/docs"}>Docs</.link>
+      &middot; <.link navigate={~p"/leaderboard"}>Leaderboard</.link>
       &middot; <.link href={~p"/api/stats"}>Stats API</.link>
       &middot; <.link navigate={~p"/lobby"}>Lobby</.link>
     </span>

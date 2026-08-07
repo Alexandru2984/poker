@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MicuPoker">
+  <rect width="512" height="512" rx="112" fill="#0f5c46"/>
+  <g transform="rotate(-12 256 300)">
+    <rect x="128" y="150" width="150" height="212" rx="18" fill="#f4f6fa"/>
+    <text x="203" y="286" font-family="Inter, Helvetica, Arial, sans-serif" font-size="150"
+          font-weight="700" fill="#14161c" text-anchor="middle">A</text>
+  </g>
+  <g transform="rotate(12 256 300)">
+    <rect x="234" y="150" width="150" height="212" rx="18" fill="#f4f6fa"/>
+    <text x="309" y="300" font-family="Inter, Helvetica, Arial, sans-serif" font-size="150"
+          font-weight="700" fill="#c62b2b" text-anchor="middle">&#9829;</text>
+  </g>
+</svg>

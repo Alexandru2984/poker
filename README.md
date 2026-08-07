@@ -73,14 +73,18 @@ Two classes of setting, deliberately:
 ## Deploying
 
 ```bash
-./scripts/deploy.sh --dry-run   # build and migrate, do not restart
-./scripts/deploy.sh             # full deploy
+./scripts/deploy.sh --build-only  # pre-flight: compile, assets, release
+./scripts/deploy.sh               # full deploy
 ```
 
-The script builds assets, runs migrations and builds the release *before*
-touching the running service, so a failure at any of those steps leaves the live
-node alone. After the restart it polls `/health` and then runs the post-deploy
-checks.
+The script builds assets and the release *before* touching the database or the
+service, so a build failure leaves the live node alone. Migrations run next,
+against the live database and before the new code starts — so every migration
+has to be compatible with the code currently running. The restart is last, after
+which it polls `/health` and runs the post-deploy checks.
+
+`--build-only` stops before the migrations: rehearsing a deploy should not
+change production data.
 
 ```bash
 ./scripts/deploy_check.sh

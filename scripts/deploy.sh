@@ -2,21 +2,28 @@
 #
 # MicuPoker production deploy.
 #
-#   ./scripts/deploy.sh            full deploy
-#   ./scripts/deploy.sh --dry-run  build and migrate, but do not restart
+#   ./scripts/deploy.sh              full deploy
+#   ./scripts/deploy.sh --build-only compile, assets and release; touches
+#                                    neither the database nor the service
 #
 # Ordering matters: the release is built and the migrations run BEFORE the
 # service is restarted, so a build failure or a bad migration leaves the running
 # node untouched. The restart is the last reversible step.
+#
+# --build-only is the pre-flight check. It deliberately does not migrate:
+# migrations are a production change, not a rehearsal.
 
 set -euo pipefail
 
 APP_DIR=/home/micu/poker
 SERVICE=micupoker.service
-RELEASE="$APP_DIR/_build/prod/rel/micu_poker/bin/micu_poker"
 
-DRY_RUN=0
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+BUILD_ONLY=0
+case "${1:-}" in
+  "") ;;
+  --build-only) BUILD_ONLY=1 ;;
+  *) echo "usage: $0 [--build-only]" >&2; exit 2 ;;
+esac
 
 cd "$APP_DIR"
 
@@ -57,18 +64,18 @@ mix compile --warnings-as-errors
 step "Building assets"
 mix assets.deploy
 
+step "Building the release"
+mix release --overwrite
+
+if [[ "$BUILD_ONLY" == "1" ]]; then
+  step "Build only: skipping migrations and restart"
+  exit 0
+fi
+
 step "Running migrations"
 # Applied against the live database before the new code starts, so every
 # migration must be backwards compatible with the code currently running.
 mix ecto.migrate
-
-step "Building the release"
-mix release --overwrite
-
-if [[ "$DRY_RUN" == "1" ]]; then
-  step "Dry run: skipping restart"
-  exit 0
-fi
 
 step "Restarting $SERVICE"
 sudo systemctl restart "$SERVICE"

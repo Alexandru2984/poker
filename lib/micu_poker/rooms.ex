@@ -278,7 +278,7 @@ defmodule MicuPoker.Rooms do
   end
 
   def stale_room_cutoff do
-    minutes = System.get_env("ROOM_IDLE_TIMEOUT_MINUTES", "240") |> String.to_integer()
+    minutes = int_env("ROOM_IDLE_TIMEOUT_MINUTES", 240, min: 1)
     DateTime.add(DateTime.utc_now(:second), -minutes, :minute)
   end
 
@@ -289,7 +289,7 @@ defmodule MicuPoker.Rooms do
   end
 
   def max_rooms do
-    System.get_env("MAX_ROOMS", "100") |> String.to_integer()
+    int_env("MAX_ROOMS", 100, min: 1)
   end
 
   def room_capacity_reached?, do: active_room_count() >= max_rooms()
@@ -390,11 +390,7 @@ defmodule MicuPoker.Rooms do
 
   defp blank_to_nil(value), do: value
 
-  defp int_env(key, default) do
-    System.get_env(key, "#{default}") |> String.to_integer()
-  rescue
-    _ -> default
-  end
+  defp int_env(key, default, opts \\ []), do: MicuPoker.Config.integer(key, default, opts)
 
   defp bool_attr(attrs, key, default) do
     atom_key = String.to_atom(key)

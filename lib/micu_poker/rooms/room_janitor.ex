@@ -30,14 +30,13 @@ defmodule MicuPoker.Rooms.RoomJanitor do
 
   defp enabled? do
     Application.get_env(:micu_poker, :room_janitor_enabled, true) &&
-      System.get_env("ROOM_JANITOR_ENABLED", "true") == "true"
+      MicuPoker.Config.boolean("ROOM_JANITOR_ENABLED", true)
   end
 
   defp initial_delay_ms,
-    do: System.get_env("ROOM_JANITOR_INITIAL_DELAY_MS", "30000") |> String.to_integer()
+    do: MicuPoker.Config.integer("ROOM_JANITOR_INITIAL_DELAY_MS", 30_000)
 
   defp interval_ms do
-    minutes = System.get_env("ROOM_JANITOR_INTERVAL_MINUTES", "15") |> String.to_integer()
-    minutes * 60_000
+    MicuPoker.Config.integer("ROOM_JANITOR_INTERVAL_MINUTES", 15, min: 1) * 60_000
   end
 end

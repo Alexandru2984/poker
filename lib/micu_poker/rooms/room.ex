@@ -105,8 +105,10 @@ defmodule MicuPoker.Rooms.Room do
 
   def min_password_length, do: @min_password_length
 
+  # Ten is the hard ceiling: a 52-card deck deals two hole cards plus five board
+  # cards, and the seat ring is laid out for at most ten positions.
   def max_players do
-    System.get_env("MAX_PLAYERS_PER_ROOM", "9") |> String.to_integer()
+    MicuPoker.Config.integer("MAX_PLAYERS_PER_ROOM", 9, min: 2, max: 10)
   end
 
   defp validate_blinds(changeset) do

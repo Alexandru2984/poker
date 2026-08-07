@@ -1,21 +1,93 @@
+# MicuPoker release unit.
+# Install as /etc/systemd/system/micupoker.service, then:
+#   sudo systemctl daemon-reload && sudo systemctl enable --now micupoker
+#
+# Verify the sandbox after any change:
+#   systemd-analyze security micupoker.service
+
 [Unit]
 Description=MicuPoker Phoenix release
-After=network.target postgresql.service
-Wants=postgresql.service
+Documentation=https://poker.micutu.com/docs
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+# A crash loop should back off instead of hammering Postgres. These live in
+# [Unit], not [Service] — systemd ignores them silently in the wrong section.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=micu
 Group=micu
 WorkingDirectory=/home/micu/poker
+
+# Secrets live here, never in the unit file (unit files are world-readable).
+# Keep it chmod 600 and owned by micu.
 EnvironmentFile=/home/micu/poker/.env
 Environment=HOME=/home/micu
+Environment=LANG=en_US.UTF-8
+
+# No clustering: a single node needs no epmd and no distribution port.
 Environment=RELEASE_DISTRIBUTION=none
+
 ExecStart=/home/micu/poker/_build/prod/rel/micu_poker/bin/micu_poker start
+ExecStop=/home/micu/poker/_build/prod/rel/micu_poker/bin/micu_poker stop
+
 Restart=on-failure
 RestartSec=5
+
+# SIGTERM lets the BEAM run its shutdown so LiveViews close cleanly and the
+# table processes get a chance to persist.
 KillSignal=SIGTERM
+TimeoutStopSec=30
 SyslogIdentifier=micupoker
+
+# --- Sandbox -----------------------------------------------------------------
+# The release binds 127.0.0.1:4100, so it needs no capabilities at all.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Read-only everywhere except the app directory. The release writes its boot
+# scratch files under _build/prod/rel/micu_poker/tmp, so that path must stay
+# writable; nothing else does.
+ProtectSystem=strict
+ReadWritePaths=/home/micu/poker
+PrivateTmp=true
+
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+PrivateDevices=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+UMask=0077
+
+# TCP for HTTP and Postgres, plus AF_UNIX for the BEAM's own internal plumbing.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@resources @obsolete @privileged
+
+# Verified by starting the VM under exactly these properties: it comes up with
+# every scheduler online. Re-run that probe if the filter is ever narrowed.
+
+# NOTE: do NOT set MemoryDenyWriteExecute. The BEAM's JIT maps executable pages
+# at runtime and the VM refuses to start without them.
+
+# One socket per player, plus Postgres pool and file handles.
+LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target

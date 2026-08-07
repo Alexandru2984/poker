@@ -236,18 +236,11 @@ defmodule MicuPoker.Accounts do
   end
 
   def default_chips do
-    case Integer.parse(System.get_env("DEFAULT_STARTING_CHIPS", "")) do
-      {value, ""} when value > 0 -> value
-      _invalid -> @default_chips
-    end
+    MicuPoker.Config.integer("DEFAULT_STARTING_CHIPS", @default_chips, min: 1)
   end
 
   def unused_guest_cutoff do
-    minutes =
-      case Integer.parse(System.get_env("UNUSED_GUEST_RETENTION_MINUTES", "")) do
-        {value, ""} when value > 0 -> value
-        _invalid -> 1440
-      end
+    minutes = MicuPoker.Config.integer("UNUSED_GUEST_RETENTION_MINUTES", 1440, min: 1)
 
     DateTime.add(DateTime.utc_now(:second), -minutes, :minute)
   end

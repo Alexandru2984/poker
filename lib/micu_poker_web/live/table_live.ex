@@ -268,10 +268,7 @@ defmodule MicuPokerWeb.TableLive do
   end
 
   defp turn_timeout_seconds do
-    case Integer.parse(System.get_env("TURN_TIMEOUT_SECONDS", "")) do
-      {value, ""} when value > 0 -> value
-      _invalid -> 30
-    end
+    MicuPoker.Config.integer("TURN_TIMEOUT_SECONDS", 30, min: 1)
   end
 
   defp waiting_message(table, user_id) do

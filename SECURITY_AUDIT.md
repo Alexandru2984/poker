@@ -1,58 +1,227 @@
 # MicuPoker Security Audit
 
-Date: 2026-05-31
+Second full pass. Supersedes the 2026-05-31 audit, whose findings are all fixed
+and are summarised at the bottom.
 
-Scope: Phoenix app code, realtime socket authorization, card privacy, action validation, deployment binding, Nginx proxying, and play-money constraints.
+Date: 2026-08-07
+Scope: application code, the realtime layer, card privacy, action validation,
+authentication, the reverse proxy, the systemd sandbox, and the play-money
+constraint.
 
-## Fixed During Audit
+## Threat model
 
-- Removed `/socket?user_id=...` authentication. Phoenix Channels now require the signed session or a server-signed socket token.
-- Fixed mid-hand joins so a late player waits for the next hand instead of corrupting in-memory cards for active players.
-- Added explicit `Your Hand` UI so each device can see its own cards clearly.
-- Added hand summaries, board texture hints, and best-five display so pairs, flushes, straights, and stronger made hands are visible to the correct player.
-- Added tests for multi-user card isolation, late-join behavior, mobile layout guardrails, hand summaries, signed socket tokens, and socket impersonation rejection.
-- Disabled Erlang distribution in systemd so the release no longer opens a random BEAM listener on `0.0.0.0`.
-- Added server-side chat/action rate limits and disconnect grace handling for LiveView and Channel clients.
-- Changed chat validation to reject oversized messages explicitly instead of silently truncating them.
-- Added tested main-pot, side-pot, and split-pot settlement for showdown.
-- Added transactional finished-hand persistence for final stacks, pot total, winner summary, and zero-sum chip ledger entries.
+The attacker is a player. They can hold a legitimate seat, open a WebSocket,
+read every byte the server sends them, replay and forge any request, script
+thousands of them, and open as many sessions as they like. They may also be
+someone who never logs in and simply wants the service down or the database
+full.
 
-## Current Protections
+What must hold:
 
-- The Phoenix release binds only to `127.0.0.1`, with Erlang distribution disabled.
-- Nginx is the public HTTPS reverse proxy and includes WebSocket upgrade headers.
-- `/health` returns minimal JSON and does not create a guest session.
-- The server owns deck, hole cards, turns, legal actions, pot state, and winner calculation.
-- Showdown settlement is server-side and accounts for side-pot eligibility.
-- Folded/uncontested hands keep private cards hidden from spectators and public API responses; only actual showdown reveals remaining hands.
-- Stack persistence and chip ledger writes happen with finished-hand updates in one database transaction.
-- Persisted hand winner summaries omit internal user IDs; user IDs remain only in internal audit tables such as the chip ledger.
-- Persisted hand action amounts are computed server-side for call and all-in actions instead of trusting client-submitted amounts.
-- PubSub broadcasts are sanitized; LiveView and Channel clients fetch personalized table state server-side.
-- Sanitized table state exposes the internal `user_id` only for the current viewer, not for opponents or anonymous API callers.
-- Spectators and waiting players receive no action buttons and no private cards.
-- Disconnected players cannot manually chat or act; only server-side timeout handling can advance their turn while disconnected.
-- LiveView bet/raise input is clamped to the server-provided valid action range before action submission.
-- Disconnected seats are marked as reconnecting, expire after the configured grace period, and do not enter new hands while disconnected.
-- Manual leave during a hand folds the player, preserves their pot contribution through settlement, and prevents them from being seated in the next hand.
-- Player connection refs are tracked for LiveView and Channel sockets, so one closed tab cannot mark a still-connected player as disconnected.
-- Table turn, next-hand, and disconnect-grace timers carry unique message tokens so stale timeout messages are ignored; table timers are also cancelled on TableServer shutdown.
-- A supervised room janitor completes stale rooms and marks stale seats as left without deleting hand history or ledger data.
-- Public pages and APIs no longer create guest users; only app routes create guests, and unused guests without room history are eligible for janitor cleanup.
-- Public room API reads are side-effect free and do not start table GenServers.
-- Public room API lookups parse IDs safely and return JSON 404 responses for invalid or missing rooms.
-- Browser room joins/leaves and LiveView mounts parse room IDs safely and redirect invalid rooms back to the lobby.
-- Phoenix Channel table topics parse room IDs safely and reject invalid or missing rooms without raising.
-- Phoenix Channel inbound events reject malformed payloads and unknown event names without function-clause crashes.
-- Spectator mode is enforced consistently across LiveView, controller joins, and Phoenix Channels.
-- Room creation enforces `MAX_ROOMS` against non-complete rooms to cap active table growth.
-- Room creation rejects blinds that cannot be covered by the starting stack, preventing malformed hands at startup.
-- Room creation rejects invalid or blank numeric fields and spectator-mode flags instead of silently applying defaults to submitted bad values.
-- No real-money gambling features exist.
+1. A player learns nothing about another player's hole cards before showdown.
+2. A player cannot act out of turn, act as someone else, or move chips that are
+   not theirs.
+3. The card sequence is unpredictable and comes from the server.
+4. No amount of traffic from one client degrades the table for everyone else.
+5. The database does not grow without bound from traffic that never plays.
 
-## Remaining Risks / TODO
+## Findings
 
-- Guest identity is cookie/session based; persistent username/password accounts are not implemented.
-- Password-protected rooms are disabled in v1 and incoming room password values are ignored until full access control is implemented with a proper password hashing library.
-- Add automated browser-based mobile regression tests in CI if this project later gets CI infrastructure.
-- Add full Phoenix Presence member listings if multi-device identity display becomes important.
+Ordered by severity. Every one is fixed; the commit that fixed it is named.
+
+### Critical
+
+**The betting line could be reopened by a short all-in.** A player who was
+all-in for less than a full raise reset `min_raise` and cleared the acted set,
+which let a player who had already acted raise again. In a real game this is the
+difference between a closed action and an unlimited one — it could be driven
+deliberately to squeeze a third player. `MicuPoker.Poker.Betting.all_in/3` now
+distinguishes a full raise from a short one: a short all-in advances
+`current_bet` but records the players whose action is closed, and they can only
+call or fold. *(a1a1057)*
+
+**Postflop action started from the wrong seat.** Every street after the flop
+resumed from the last aggressor's seat rather than from the first live player
+left of the button, so a player could be given or denied position. Fixed in
+`start_street_turn/1`, which now walks from `dealer_seat`. Verified by reverting
+the fix and confirming the test suite fails. *(a1a1057)*
+
+**An uncalled bet was swallowed by the pot.** When everyone folded to a raise,
+the unmatched portion stayed in the pot instead of returning to the raiser.
+`return_uncalled_bet/1` returns it before settlement. *(a1a1057)*
+
+### High
+
+**No Content-Security-Policy, HSTS, or cross-origin isolation headers.** Any
+injected markup could load and exfiltrate to anywhere. `Plugs.SecurityHeaders`
+now sends a policy with `script-src 'self'` — no inline scripts anywhere in the
+app — `object-src 'none'`, `frame-ancestors 'none'`, `form-action 'self'`, and a
+`connect-src` limited to the app's own WebSocket origins. HSTS is only sent over
+a request that actually arrived on HTTPS. *(fed7f46)*
+
+**Client IP was taken from whatever header the client sent.** Every per-IP limit
+could be bypassed with one forged `X-Forwarded-For`. `Plugs.RemoteIp` only
+honours forwarded headers when the TCP peer is inside `TRUSTED_PROXIES`, walks
+`X-Forwarded-For` right to left, and prefers `CF-Connecting-IP` only when
+`TRUST_CLOUDFLARE` is set. nginx overwrites `CF-Connecting-IP` with the
+resolved address, so a client cannot supply its own. *(fed7f46)*
+
+**No rate limiting anywhere.** `MicuPoker.RateLimiter` is a fixed-window ETS
+counter using `:ets.update_counter/4`, with `Plugs.RateLimit` in front of the
+route groups that cost something: 20/min on auth, 10/min on room writes, 120/min
+on the JSON API. nginx enforces the same shape one layer out so the BEAM never
+sees the flood. *(fed7f46)*
+
+**LiveDashboard was mounted for anyone in dev and the session was reused across
+login.** The dashboard exposes process, memory and query internals. It now lives
+at `/admin/dashboard` behind basic auth, mounted only when `ADMIN_USER` and an
+`ADMIN_PASSWORD` of at least 16 bytes are both set, and returning 404 when they
+are not — an unconfigured dashboard should not even advertise its existence.
+*(e1dba15)*
+
+**Session fixation.** Logging in kept the pre-auth session ID, so an attacker
+who could plant a cookie kept access after the victim authenticated.
+`UserAuth.log_in_user/3` calls `renew_session` — `clear_session` plus
+`configure_session(renew: true)` — before writing the token. *(8eaae64)*
+
+**A crash in one table took down every table.** `TableServer` calls were
+unwrapped `GenServer.call`s, so a restarting or dead table process propagated
+the exit into the caller's LiveView and killed the player's page. Every call now
+goes through a wrapper that catches `:noproc`, `:normal`, `:shutdown` and
+`:timeout` and returns `{:error, :table_unavailable}`. *(74fe625)*
+
+### Medium
+
+**A malformed environment variable crashed the node.** `String.to_integer/1` on
+an operator-supplied value raised — `Room.max_players/0` is called from a
+changeset, so `MAX_PLAYERS_PER_ROOM=nine` meant a 500 on every lobby render, and
+the same parse inside `TableServer` killed the table mid-hand. All runtime
+settings now go through `MicuPoker.Config`, which range-checks and falls back to
+the documented default. Boot-time settings still fail loudly and on purpose.
+*(74fe625, this commit)*
+
+**Table processes and their rate-limit state leaked.** A table with no players
+stayed resident forever, and its per-player limiter map grew without bound.
+Tables now shut down after `TABLE_IDLE_SHUTDOWN_MINUTES` of no connected players
+— state is already persisted, so the next visitor restarts it — and stale
+limiter entries are pruned. *(74fe625)*
+
+**Usernames collided case-insensitively.** `Admin` and `admin` were different
+accounts, which is an impersonation primitive. A `unique_index` on
+`lower(username)` was added after confirming the production table had no
+existing duplicates. *(8eaae64)*
+
+**Login leaked which usernames exist through timing.** A miss returned
+immediately; a hit spent ~200 ms hashing. `Password.no_user_verify/0` runs the
+same work on a miss. Attempts are limited to 10 per IP and 5 per username per 15
+minutes, so the equalised cost is also a budget. *(8eaae64)*
+
+**Open redirect on login.** `?return_to=` was followed unvalidated.
+`safe_return_to/1` accepts only a path, rejecting protocol-relative `//evil.com`
+along with absolute URLs. *(8eaae64)*
+
+**Public pages created a database row per visitor.** `GET /` redirected into the
+guest pipeline, so every crawler hit inserted a `users` row. `/` is now a real
+landing page outside that pipeline, as are `/leaderboard`, `/docs`, `/health`
+and the JSON API. Guests with no room history are reaped after
+`UNUSED_GUEST_RETENTION_MINUTES`. *(fd59695, e1dba15)*
+
+**A rebuy counted as a losing hand.** Stats summed the whole ledger, so topping
+up looked like a loss and could be used to manipulate a ranking. Only
+`showdown` and `uncontested` entries count toward results. *(e1dba15)*
+
+### Low
+
+**The origin was reachable without Cloudflare.** The vhost had no origin guard,
+so anyone who found the origin IP could bypass the edge entirely. It now returns
+444 unless `$realip_remote_addr` — the real TCP peer, captured before the realip
+module rewrites it — is a Cloudflare range or loopback. *(this commit)*
+
+**nginx duplicated the app's security headers.** Two `X-Frame-Options` headers
+arrive as `DENY, DENY`, which some browsers treat as malformed and ignore
+outright, and two CSP headers force the browser to satisfy both. The app is now
+the single source of truth and nginx adds none, which also means a local run is
+as hardened as production. *(this commit)*
+
+**`Connection: upgrade` was sent on every proxied request**, including plain
+page loads. Now mapped from `$http_upgrade`. *(this commit)*
+
+**The systemd unit had no sandbox.** The release ran with the full ambient
+capability set and write access to the whole filesystem. It now runs with no
+capabilities, `ProtectSystem=strict` plus a single `ReadWritePaths`, a private
+`/tmp`, `ProtectProc=invisible`, a filtered syscall set and no Erlang
+distribution port. *(this commit)*
+
+## Current controls
+
+**Cards.** The deck is shuffled from `:crypto.strong_rand_bytes`. Hole cards
+live in the table process and are written into the socket of exactly one player.
+Broadcasts carry sanitized state; each client fetches its own personalised view.
+A fold or an uncontested pot never reveals cards — only a real showdown does.
+Sanitized state exposes `user_id` only for the viewer; opponents are identified
+by seat and display name.
+
+**Authority.** The server owns the deck, the turn order, the legal action set,
+the pot, the stacks and the winner. Bet and raise amounts are clamped to the
+server's own valid range before they are applied, and persisted action amounts
+for calls and all-ins are the server's numbers, not the client's.
+
+**Identity.** Passwords are PBKDF2-HMAC-SHA512 at 210,000 iterations, chosen by
+benchmarking ~198 ms on this host. Session tokens are 32 random bytes; only the
+SHA-256 digest is stored, so a database read does not yield a usable token.
+Comparisons use `Plug.Crypto.secure_compare`. Cookies are `secure`, `http_only`,
+`SameSite=Lax`, signed and encrypted.
+
+**Sockets.** Channels require the signed session or a server-signed socket
+token; a raw `user_id` parameter is rejected. `check_origin` is the public host.
+Unknown topics, malformed payloads and unknown events all return errors rather
+than raising. Disconnected players cannot chat or act — only the server's own
+timeout handling can advance their turn.
+
+**Availability.** Per-IP limits in nginx and in the app, per-player chat and
+action spacing in the table process, a connection cap per IP, request-phase
+timeouts against slowloris, `client_max_body_size 64k`, `MAX_ROOMS`, idle table
+shutdown, and a supervised janitor that completes stale rooms without deleting
+hand history or ledger rows.
+
+**Integrity.** Finished hands persist stacks, pot total, winner summary and
+zero-sum `chip_ledger` entries in one transaction. Winner summaries carry no
+internal user IDs; the ledger keeps them for audit.
+
+**Isolation.** The release binds `127.0.0.1` only. Erlang distribution is off.
+nginx is the only public entry point and is itself reachable only through
+Cloudflare. No web request executes a shell command. No secret appears in the
+frontend, the README or any public response.
+
+## Out of scope, and why
+
+- **Real money.** None of it exists. Adding any of it needs legal review first.
+- **Collusion between players at one table.** Two players sharing their hole
+  cards over another channel cannot be detected from inside the app. The hand
+  history and ledger exist so it can be investigated after the fact.
+- **Multi-accounting.** Guest seats are free by design, which is what makes the
+  game frictionless. Table passwords are the control for a game that needs a
+  known set of players.
+- **Automated play.** A bot is indistinguishable from a fast human over this
+  API. Not worth defending against for play money.
+- **Browser-based mobile regression tests.** The layout has unit coverage;
+  end-to-end device testing is not wired up.
+
+## Verifying
+
+```bash
+mix test                        # 296 tests
+mix compile --warnings-as-errors
+./scripts/deploy_check.sh       # headers, duplication, pages, admin route
+systemd-analyze security micupoker.service
+```
+
+## The 2026-05-31 pass
+
+All fixed, kept here for the record: `/socket?user_id=...` authentication,
+mid-hand joins corrupting active players' cards, no side-pot settlement, Erlang
+distribution listening on `0.0.0.0`, no chat or action rate limits, silent
+truncation of oversized chat, hand persistence outside a transaction, public
+APIs starting table processes as a side effect, unparsed room IDs raising out of
+controllers and channels, and spectator mode enforced inconsistently across
+LiveView, the controller and the channel.

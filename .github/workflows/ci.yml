@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch cancels the first: only the tip matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Format, compile and test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: micu_poker_test
+        ports: ["5432:5432"]
+        # Without this the suite races the database on a cold runner.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      MIX_ENV: test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost/micu_poker_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to the versions running in production. Bump both together.
+      - uses: erlef/setup-beam@v1
+        id: beam
+        with:
+          elixir-version: "1.18.3"
+          otp-version: "27.3.4"
+
+      - name: Restore dependency and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - run: mix deps.get --check-locked
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      # Warnings are how unused variables, deprecated calls and unreachable
+      # clauses show up. None of them should reach main.
+      - name: Compile without warnings
+        run: mix compile --warnings-as-errors
+
+      - name: Check for unused dependencies
+        run: mix deps.unlock --check-unused
+
+      - name: Run tests
+        run: mix test --warnings-as-errors
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18.3"
+          otp-version: "27.3.4"
+
+      - run: mix deps.get
+
+      # Fails when a locked dependency has been retired from Hex — pulled by its
+      # maintainer for a security issue, a broken build, or a bad release.
+      - name: Audit dependencies
+        run: mix hex.audit

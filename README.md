@@ -1,197 +1,166 @@
 # MicuPoker
 
-MicuPoker is a production Phoenix application for a real-time multiplayer Texas Hold'em demo at `https://poker.micutu.com`.
+Real-time multiplayer Texas Hold'em, running at `https://poker.micutu.com`.
 
-This is play-money only. Chips are virtual demo chips with no real-world value. The app has no deposits, withdrawals, payments, cash-out, crypto, casino monetization, or real-money gambling support. Any future real-money feature requires legal and compliance review before implementation.
+Play money only. Chips are virtual and have no real-world value. There are no
+deposits, withdrawals, payments, cash-out, crypto, or casino monetization
+anywhere in the codebase, and any future real-money feature would need legal and
+compliance review before it was written.
 
-## Features
+## What it does
 
-- Guest-mode identity with editable display names.
-- Dark lobby with room filters, environment-backed defaults, and strict table creation validation.
-- Real-time poker table using Phoenix LiveView, Phoenix Channels, PubSub, and a GenServer per table.
-- Server-authoritative deck, private hole cards, turns, action validation, stack changes, pot, showdown, and winner calculation.
-- Real card faces with suit symbols, own-hand summaries, board texture hints, and best-five display after enough board cards.
-- Table chat with explicit empty-message and max-length rejection.
-- Spectator-safe public table state: other players' private cards are hidden before showdown.
-- Sanitized table state exposes `user_id` only for the current viewer; other players are identified by seat/display name and `is_me`.
-- Folded/uncontested hands do not reveal private cards; only real showdowns expose all remaining hole cards.
-- Configurable active-room capacity enforcement with `MAX_ROOMS`.
-- Connection reference tracking so one closed tab does not disconnect a player who is still connected elsewhere.
-- `/health`, JSON room/stats APIs, and `/docs`.
+**Table.** A GenServer owns each table. It holds the deck, deals, runs the
+betting round, evaluates the showdown and settles the pot. Clients send
+intentions; the server decides what happened. A player's hole cards exist only
+in that process and in the socket of the player who holds them.
+
+**Rules.** 52-card shuffle from `:crypto.strong_rand_bytes`, blinds and button
+rotation by seat, the four betting streets, fold/check/call/bet/raise/all-in,
+min-raise enforcement, a short all-in that does not reopen betting, the big
+blind's option, uncalled-bet return, side pots and split pots, and a full
+seven-card evaluator from high card to royal flush.
+
+**Seats.** Sit out and sit back in between hands, buy back in after busting,
+a disconnect grace period that holds your seat and stack, and reference-counted
+connections so closing one tab does not disconnect a player who has another open.
+
+**Identity.** Registered accounts with a username and password, or a guest seat
+that needs no signup. A guest can be upgraded to an account in place without
+losing their name or chips.
+
+**Around the table.** Chat, an action log, hand history, per-player statistics,
+a leaderboard, password-protected tables, spectator mode, and an invite link.
+
+**Interface.** Built mobile-first. The table is drawn viewer-relative — you are
+always at the bottom of the felt — with tap targets sized for a thumb, a sticky
+action bar above the safe area, and keyboard shortcuts on desktop.
 
 ## Stack
 
-- Elixir, Erlang/OTP, Phoenix 1.7, LiveView.
-- PostgreSQL via Ecto.
-- Nginx reverse proxy with WebSocket upgrade support.
-- Systemd service: `micupoker.service`.
-- Let's Encrypt certificate via Certbot.
+Elixir 1.18 / OTP 27, Phoenix 1.7 with LiveView, PostgreSQL via Ecto, Bandit,
+Tailwind and esbuild. nginx terminates TLS in front of it, behind Cloudflare.
+systemd runs the release.
 
-## Build And Run
-
-From `/home/micu/poker`:
+## Running it locally
 
 ```bash
+cp .env.example .env      # then fill in DATABASE_URL and SECRET_KEY_BASE
+chmod 600 .env
 set -a; . ./.env; set +a
-mix deps.get
-mix compile
+
+mix setup                 # deps, database, assets
 mix test
-MIX_ENV=prod mix assets.deploy
-MIX_ENV=prod mix ecto.migrate
-MIX_ENV=prod mix release
+mix phx.server
 ```
 
-The production release starts with:
+`mix setup` creates the database and runs migrations. The dev server listens on
+`http://localhost:4000`.
+
+## Configuration
+
+Every setting lives in `.env`, which is git-ignored. `.env.example` documents
+each variable, its default and what it affects.
+
+Two classes of setting, deliberately:
+
+- **Boot-time** (`DATABASE_URL`, `SECRET_KEY_BASE`, `PORT`, `BIND_IP`,
+  `POOL_SIZE`) abort the boot when missing or malformed. A release that came up
+  on the wrong port would look healthy to systemd while being unreachable.
+- **Runtime** (everything else) is read through `MicuPoker.Config`, which falls
+  back to its documented default when a value is missing or nonsensical. A typo
+  in a blind size must not take the node down in the middle of a hand.
+
+## Deploying
 
 ```bash
-_build/prod/rel/micu_poker/bin/micu_poker start
+./scripts/deploy.sh --dry-run   # build and migrate, do not restart
+./scripts/deploy.sh             # full deploy
 ```
 
-In production, systemd runs it instead:
+The script builds assets, runs migrations and builds the release *before*
+touching the running service, so a failure at any of those steps leaves the live
+node alone. After the restart it polls `/health` and then runs the post-deploy
+checks.
 
 ```bash
-sudo systemctl status micupoker.service
-sudo journalctl -u micupoker.service -f
-sudo systemctl restart micupoker.service
+./scripts/deploy_check.sh
 ```
 
-## Environment
+That verifies the service is active, `/health` answers on loopback and through
+Cloudflare, every security header is present and not duplicated, the public
+pages return 200, and `/admin/dashboard` is either authenticated or unmounted.
 
-Runtime values live in `.env`, which is ignored by Git. Do not commit it.
+### Infrastructure
 
-Required variables:
+Config lives in the repo and is copied into place:
 
-- `PHX_HOST=poker.micutu.com`
-- `PORT=4100`
-- `BIND_IP=127.0.0.1`
-- `DATABASE_URL=postgresql://.../micupoker`
-- `SECRET_KEY_BASE=...`
-- `POOL_SIZE=10`
-- `PHX_SERVER=true`
-- `PLAY_MONEY_ONLY=true`
-- `DEFAULT_STARTING_CHIPS=1000`
-- `DEFAULT_SMALL_BLIND=5`
-- `DEFAULT_BIG_BLIND=10`
-- `TURN_TIMEOUT_SECONDS=30`
-- `NEXT_HAND_DELAY_MS=4000`
-- `DISCONNECT_GRACE_SECONDS=60`
-- `CHAT_RATE_LIMIT_MS=1200`
-- `ACTION_RATE_LIMIT_MS=400`
-- `MAX_ROOMS=100`
-- `MAX_PLAYERS_PER_ROOM=9`
-- `MAX_CHAT_MESSAGE_LENGTH=300`
-- `ROOM_IDLE_TIMEOUT_MINUTES=240`
-- `ROOM_JANITOR_INTERVAL_MINUTES=15`
-- `ROOM_JANITOR_INITIAL_DELAY_MS=30000`
-- `ROOM_JANITOR_ENABLED=true`
-- `UNUSED_GUEST_RETENTION_MINUTES=1440`
+| Repo | Installed as |
+| --- | --- |
+| `deploy/nginx/poker.micutu.com.conf` | `/etc/nginx/sites-available/poker.micutu.com` |
+| `deploy/nginx/micupoker-limits.conf` | `/etc/nginx/conf.d/micupoker-limits.conf` |
+| `systemd/micupoker.service.example` | `/etc/systemd/system/micupoker.service` |
 
-## PostgreSQL
+The vhost depends on the host-wide `conf.d/cloudflare-realip.conf` and
+`conf.d/cloudflare-origin-guard.conf`, which are shared with the other sites on
+this machine and are not duplicated here.
 
-Production database: `micupoker`.
-
-Production user: `micupoker_user`.
-
-Test database: `micupoker_test`.
-
-The database password is stored only in `.env`.
-
-## Deployment
-
-- Public URL: `https://poker.micutu.com`
-- Local bind: `127.0.0.1:4100`
-- Nginx config: `/etc/nginx/sites-available/poker.micutu.com`
-- Enabled symlink: `/etc/nginx/sites-enabled/poker.micutu.com`
-- Systemd unit: `/etc/systemd/system/micupoker.service`
-- Example unit in repo: `systemd/micupoker.service.example`
-- The systemd unit sets `RELEASE_DISTRIBUTION=none` so the release does not expose an Erlang distribution port. Systemd stops it with SIGTERM instead of release RPC.
-
-Certbot's Nginx plugin cannot parse the existing global CrowdSec Lua config on this VPS, so the certificate was issued with the webroot method and the SSL server block was installed manually.
-
-## API Routes
-
-- `GET /health`
-- `GET /`
-- `GET /lobby`
-- `GET /rooms/:id`
-- `POST /rooms`
-- `POST /rooms/:id/join`
-- `POST /rooms/:id/leave`
-- `GET /docs`
-- `GET /api/rooms`
-- `GET /api/rooms/:id`
-- `GET /api/stats`
-
-`/health` returns only:
-
-```json
-{"status":"ok","service":"micupoker"}
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+sudo systemctl daemon-reload && sudo systemctl restart micupoker
+systemd-analyze security micupoker.service   # after any unit change
 ```
 
-## WebSocket Protocol
+The unit runs the release under a systemd sandbox: no capabilities, a read-only
+filesystem apart from the app directory, a private `/tmp`, a filtered syscall
+set and no Erlang distribution port. It deliberately does **not** set
+`MemoryDenyWriteExecute` — the BEAM's JIT maps executable pages and the VM will
+not start without them.
 
-- Endpoint: `/socket`
-- Phoenix topic: `table:<room_id>`
-- Browser pages include a signed `<meta name="socket-token">`; channel clients must connect with `?token=<signed_token>`. Raw `user_id` query parameters are rejected.
-- Invalid or missing `table:<room_id>` channel topics are rejected with `room_not_found` instead of raising.
-- Malformed Channel `action`/`chat` payloads return `invalid_payload`; unknown events return `unknown_event`.
-- Events:
-  - `phx_join`
-  - `state`
-  - `action` with `{ "action": "fold|check|call|bet|raise|all_in", "amount": 100 }`
-  - `chat` with `{ "message": "..." }`
+## Routes
 
-LiveView uses Phoenix's standard `/live` WebSocket.
+| Route | Notes |
+| --- | --- |
+| `GET /` | Landing page. Static; creates no guest user. |
+| `GET /lobby` | Table list and creation. |
+| `GET /rooms/:id` | The table. LiveView. |
+| `GET /leaderboard` | Rankings, plus your own numbers when signed in. |
+| `GET /login`, `/register` | Accounts. Rate limited per IP and per username. |
+| `GET /docs` | Rules and house policy. |
+| `GET /health` | `{"status":"ok","service":"micupoker"}` |
+| `GET /api/rooms`, `/api/rooms/:id`, `/api/stats` | Read-only JSON. |
+| `GET /admin/dashboard` | LiveDashboard. 404 unless `ADMIN_USER` and a 16-byte `ADMIN_PASSWORD` are set. |
 
-## Poker Rules Implemented
+Public pages and the JSON API never insert a `users` row, so crawler traffic
+does not grow the database.
 
-- 52-card secure shuffle.
-- Texas Hold'em hole cards and community cards.
-- Dealer rotation, blinds, preflop/flop/turn/river betting rounds.
-- Fold, check, call, bet, raise, and all-in.
-- Showdown evaluator for high card, pair, two pair, trips, straight, flush, full house, quads, straight flush, royal flush.
-- Main-pot, side-pot, and split-pot settlement at showdown.
-- Completed hands persist final table stacks, pot total, public-safe winner summaries, and zero-sum chip ledger entries.
+### WebSocket
 
-## Known Limitations
+LiveView uses Phoenix's `/live` socket. The table channel is at `/socket`,
+topic `table:<room_id>`.
 
-- Guest mode is used instead of email/password accounts.
-- Password-protected rooms are disabled in v1 until full access control is implemented.
-- Reconnect handling is session-based; full Phoenix Presence member listings are not implemented yet.
+Pages carry a signed `<meta name="socket-token">`; the channel client connects
+with `?token=<signed_token>`. A raw `user_id` parameter is rejected — otherwise
+anyone could act as anyone. Unknown topics return `room_not_found`, malformed
+payloads return `invalid_payload`, and unknown events return `unknown_event`,
+none of which raise.
 
-## Security And Fairness
+Events: `phx_join`, `state`, `action` with
+`{"action": "fold|check|call|bet|raise|all_in", "amount": 100}`, and `chat` with
+`{"message": "..."}`.
 
-- Phoenix binds only to `127.0.0.1`; Nginx is the public entry point.
-- Erlang distribution is disabled in systemd; only the Phoenix HTTP listener is open locally.
-- Nginx adds security headers and proxies WebSockets.
-- The server owns deck, cards, turns, pot, stacks, and winners.
-- Clients never receive other players' private cards before showdown.
-- Clients and public APIs do not receive other players' internal user IDs in sanitized table state.
-- Uncontested pots keep folded private cards hidden from spectators, public APIs, and other players.
-- Chat and display names are length/format constrained and HTML-escaped by Phoenix templates; oversized chat messages are rejected instead of silently truncated.
-- Room defaults use `DEFAULT_STARTING_CHIPS`, `DEFAULT_SMALL_BLIND`, `DEFAULT_BIG_BLIND`, and `MAX_PLAYERS_PER_ROOM`; blinds are rejected if the big blind is larger than the starting stack.
-- Room numeric fields and spectator-mode flags reject invalid or blank submitted values instead of silently falling back to defaults.
-- Chat and repeated action attempts are rate-limited server-side.
-- Players marked disconnected cannot manually chat or act until they reconnect; server timeout actions still run authoritatively.
-- LiveView bet/raise input is normalized to the current server-provided valid range before action submission.
-- Only real LiveView/Channel connections mark a player connected; HTTP joins only reserve a seat.
-- Multiple LiveView/Channel connections for the same player are reference-counted, so closing one tab does not disconnect the player while another is still open.
-- Disconnects keep the seat reserved for `DISCONNECT_GRACE_SECONDS`; reconnecting restores the same seat, and expired waiting seats are removed.
-- Finished tables schedule the next hand with `NEXT_HAND_DELAY_MS`; turn, next-hand, and disconnect-grace timers use per-message tokens, ignore stale timeout messages, and are cancelled on process shutdown.
-- Room metadata status is synchronized from live table state: empty rooms are complete, one connected player is waiting, and two or more connected players are active.
-- Finished hands update `room_players.stack` and write zero-sum `chip_ledger` entries for auditability.
-- Hand action history records server-computed amounts for calls and all-ins, not untrusted client input.
-- Persisted hand winner summaries omit internal user IDs; the internal chip ledger keeps user IDs for audit records.
-- A supervised room janitor completes stale rooms and releases stale seats after `ROOM_IDLE_TIMEOUT_MINUTES`.
-- Public routes and APIs do not create guest users; unused guest users with no room history are removed after `UNUSED_GUEST_RETENTION_MINUTES`.
-- Public room APIs do not start table processes; table state is returned only for already-running tables.
-- Invalid or missing public room API IDs return JSON 404 responses instead of leaking framework exceptions.
-- Invalid browser room IDs redirect safely to the lobby instead of raising route/database exceptions.
-- Lobby and `GET /api/rooms` hide rooms marked `complete`.
-- `MAX_ROOMS` is enforced against rooms that are not `complete`, limiting accidental or abusive room growth.
-- Full rooms allow spectator access only when `spectator_enabled` is true; otherwise LiveView, POST join, and Channel joins are rejected.
-- No shell commands are executed from web requests.
-- No secrets are exposed in frontend code, README, or public APIs.
+## Database
+
+Production `micupoker`, test `micupoker_test`, user `micupoker_user`. The
+password is only ever in `.env`.
+
+Finished hands write to `hands`, `hand_actions` and a zero-sum `chip_ledger`,
+which is what the stats and leaderboard read back. Persisted winner summaries
+carry no internal user IDs; the ledger keeps them for audit.
+
+## Security
+
+See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for the threat model, what was found
+and fixed, and what is deliberately out of scope.
 
 ## Troubleshooting
 
@@ -200,10 +169,9 @@ sudo systemctl status micupoker.service
 sudo journalctl -u micupoker.service -n 100 --no-pager
 sudo nginx -t
 curl -fsS http://127.0.0.1:4100/health
-curl -fsS https://poker.micutu.com/health
-scripts/deploy_check.sh
+./scripts/deploy_check.sh
 ```
 
-## Git
-
-Git commits, pushes, and staging are manual. The agent did not run `git add`, `git commit`, or `git push`.
+Certbot's nginx plugin cannot parse the global CrowdSec Lua config on this VPS,
+so the certificate was issued with the webroot method and the TLS server block
+was installed by hand. Renewals use webroot; do not switch the plugin.

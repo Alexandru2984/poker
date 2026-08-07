@@ -30,10 +30,16 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  pool_size =
+    case Integer.parse(System.get_env("POOL_SIZE") || "10") do
+      {value, ""} when value > 0 -> value
+      _invalid -> raise "environment variable POOL_SIZE must be a positive integer"
+    end
+
   config :micu_poker, MicuPoker.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    pool_size: pool_size,
     socket_options: maybe_ipv6
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
@@ -49,13 +55,34 @@ if config_env() == :prod do
       """
 
   host = System.get_env("PHX_HOST") || "example.com"
-  port = String.to_integer(System.get_env("PORT") || "4000")
+
+  # Boot-time settings fail loudly rather than falling back: a release that
+  # silently listened on the wrong port or the wrong interface would look
+  # healthy to systemd while being unreachable through nginx. The runtime knobs
+  # in MicuPoker.Config are the ones that degrade gracefully instead.
+  parse_port = fn name, default ->
+    case Integer.parse(System.get_env(name) || default) do
+      {value, ""} when value > 0 and value < 65_536 ->
+        value
+
+      _invalid ->
+        raise "environment variable #{name} must be a TCP port, got: #{System.get_env(name)}"
+    end
+  end
+
+  port = parse_port.("PORT", "4000")
 
   bind_ip =
     (System.get_env("BIND_IP") || "127.0.0.1")
-    |> String.split(".")
-    |> Enum.map(&String.to_integer/1)
-    |> List.to_tuple()
+    |> to_charlist()
+    |> :inet.parse_address()
+    |> case do
+      {:ok, address} ->
+        address
+
+      {:error, _reason} ->
+        raise "environment variable BIND_IP must be an IP address, got: #{System.get_env("BIND_IP")}"
+    end
 
   config :micu_poker, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 

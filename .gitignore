@@ -36,6 +36,8 @@ log/
 # Local production/runtime secrets.
 .env
 .env.*
+# ...but the documented template carries no secrets and must be tracked.
+!.env.example
 
 # Ignore package tarball (built via "mix hex.build").
 micu_poker-*.tar

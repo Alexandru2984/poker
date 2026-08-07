@@ -343,6 +343,8 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp idle_shutdown_ms do
+    # Zero is meaningful here — shut the table down the moment it empties — so
+    # unlike the turn clock this one keeps the default minimum of 0.
     minutes = int_env("TABLE_IDLE_SHUTDOWN_MINUTES", 20)
     minutes * 60 * 1_000
   end
@@ -962,15 +964,12 @@ defmodule MicuPoker.Poker.TableServer do
 
   # A malformed environment variable used to raise inside the table process and
   # take the whole hand down with it. Fall back to the default instead.
-  defp int_env(name, default) do
-    case Integer.parse(System.get_env(name, "")) do
-      {value, ""} when value >= 0 -> value
-      _invalid -> default
-    end
-  end
+  defp int_env(name, default, opts \\ []), do: MicuPoker.Config.integer(name, default, opts)
 
   defp schedule_timer(state) do
-    seconds = int_env("TURN_TIMEOUT_SECONDS", 30)
+    # Must match MicuPokerWeb.TableLive.turn_timeout_seconds/0: a zero here
+    # would expire every turn instantly while the UI still drew a 30s clock.
+    seconds = int_env("TURN_TIMEOUT_SECONDS", 30, min: 1)
     token = make_ref()
     timer_ref = Process.send_after(self(), {@timeout_tick, token}, seconds * 1_000)
 
@@ -1051,7 +1050,7 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp clean_message(message) do
-    max = int_env("MAX_CHAT_MESSAGE_LENGTH", 300)
+    max = int_env("MAX_CHAT_MESSAGE_LENGTH", 300, min: 1, max: 2_000)
     clean = message |> to_string() |> String.trim()
 
     cond do

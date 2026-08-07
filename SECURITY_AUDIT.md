@@ -132,10 +132,20 @@ up looked like a loss and could be used to manipulate a ranking. Only
 
 ### Low
 
-**The origin was reachable without Cloudflare.** The vhost had no origin guard,
-so anyone who found the origin IP could bypass the edge entirely. It now returns
-444 unless `$realip_remote_addr` — the real TCP peer, captured before the realip
-module rewrites it — is a Cloudflare range or loopback. *(this commit)*
+**`CF-Connecting-IP` was attacker-controlled.** `TRUST_CLOUDFLARE` was on, but
+`poker.micutu.com` is a DNS-only record: visitors hit the origin directly, so
+the app's TCP peer is always loopback — which is trusted. A request carrying its
+own `CF-Connecting-IP` therefore chose its own identity and got a fresh bucket
+in every per-IP limit. Closed twice over: nginx now overwrites the header with
+the resolved peer address on the way through, and `TRUST_CLOUDFLARE` is off so
+the app does not consult it at all. *(this commit)*
+
+The Cloudflare origin guard the other sites on this host use is written into the
+vhost but left commented out, because on a grey-clouded record it returns 444 to
+every real visitor. It is the right control once the record is proxied, and the
+condition for turning it on is documented next to it. Until then, the origin is
+reachable directly by anyone who knows the address — accepted, since that is
+simply what a DNS-only record means.
 
 **nginx duplicated the app's security headers.** Two `X-Frame-Options` headers
 arrive as `DENY, DENY`, which some browsers treat as malformed and ignore

@@ -36,9 +36,19 @@ fi
 
 echo "Public ($PUBLIC)"
 if curl -fsS --max-time 10 "$PUBLIC/health" >/dev/null; then
-  ok "/health responds through Cloudflare"
+  ok "/health responds publicly"
 else
-  fail "/health does not respond through Cloudflare"
+  fail "/health does not respond publicly"
+fi
+
+# Whether the record is proxied decides whether the origin guard in the vhost
+# may be enabled and whether TRUST_CLOUDFLARE is safe. It is reported, not
+# asserted: either answer is a valid deployment.
+resolved=$(dig +short "$PHX_HOST" A | head -1)
+if [[ "$resolved" =~ ^(104\.(1[6-9]|2[0-9]|3[01])\.|172\.6[4-9]\.|172\.7[0-1]\.|173\.245\.|141\.101\.|108\.162\.|190\.93\.|188\.114\.|197\.234\.|198\.41\.|162\.158\.|103\.2[12]\.|103\.31\.|131\.0\.72\.) ]]; then
+  ok "$PHX_HOST is proxied by Cloudflare ($resolved)"
+else
+  ok "$PHX_HOST resolves directly to the origin ($resolved) — grey cloud"
 fi
 
 headers=$(curl -fsSI --max-time 10 "$PUBLIC/" || true)

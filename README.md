@@ -104,9 +104,25 @@ Config lives in the repo and is copied into place:
 | `deploy/nginx/micupoker-limits.conf` | `/etc/nginx/conf.d/micupoker-limits.conf` |
 | `systemd/micupoker.service.example` | `/etc/systemd/system/micupoker.service` |
 
-The vhost depends on the host-wide `conf.d/cloudflare-realip.conf` and
-`conf.d/cloudflare-origin-guard.conf`, which are shared with the other sites on
-this machine and are not duplicated here.
+`sites-enabled/poker.micutu.com` is a symlink to `sites-available`. It used to
+be a regular copy, which meant editing `sites-available` changed nothing and the
+two silently drifted apart. Keep it a symlink.
+
+The vhost depends on the host-wide `conf.d/cloudflare-realip.conf`, shared with
+the other sites on this machine and not duplicated here.
+
+**`poker.micutu.com` is a DNS-only record** — it resolves straight to this host,
+not to Cloudflare, unlike most of the other sites here. Two things follow, and
+both are wrong if the record is ever orange-clouded:
+
+- The Cloudflare origin guard stays commented out in the vhost. Enabling it on a
+  grey-clouded record returns 444 to every real visitor.
+- `TRUST_CLOUDFLARE=false`. The app's peer is always loopback, which is trusted,
+  so believing an inbound `CF-Connecting-IP` would let a client choose its own
+  address and walk past every per-IP limit. nginx overwrites that header on the
+  way through as a second line of defence.
+
+`./scripts/deploy_check.sh` reports which of the two you are on.
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx

@@ -14,6 +14,7 @@ set +a
 
 ORIGIN="http://127.0.0.1:${PORT}"
 PUBLIC="https://${PHX_HOST}"
+ORIGIN_IP="${ORIGIN_IP:-185.254.97.77}"
 
 failures=0
 
@@ -41,14 +42,19 @@ else
   fail "/health does not respond publicly"
 fi
 
-# Whether the record is proxied decides whether the origin guard in the vhost
-# may be enabled and whether TRUST_CLOUDFLARE is safe. It is reported, not
-# asserted: either answer is a valid deployment.
 resolved=$(dig +short "$PHX_HOST" A | head -1)
 if [[ "$resolved" =~ ^(104\.(1[6-9]|2[0-9]|3[01])\.|172\.6[4-9]\.|172\.7[0-1]\.|173\.245\.|141\.101\.|108\.162\.|190\.93\.|188\.114\.|197\.234\.|198\.41\.|162\.158\.|103\.2[12]\.|103\.31\.|131\.0\.72\.) ]]; then
   ok "$PHX_HOST is proxied by Cloudflare ($resolved)"
 else
-  ok "$PHX_HOST resolves directly to the origin ($resolved) — grey cloud"
+  fail "$PHX_HOST is not proxied by Cloudflare ($resolved)"
+fi
+
+direct_code=$(curl -ksS --http1.1 --max-time 8 --resolve "$PHX_HOST:443:$ORIGIN_IP" \
+  -o /dev/null -w '%{http_code}' "$PUBLIC/" 2>/dev/null || true)
+if [[ "$direct_code" == "000" || "$direct_code" == "403" ]]; then
+  ok "direct origin is denied"
+else
+  fail "direct origin returned $direct_code"
 fi
 
 headers=$(curl -fsSI --max-time 10 "$PUBLIC/" || true)
@@ -95,6 +101,66 @@ case "$code" in
   404) ok "/admin/dashboard is unmounted (ADMIN_USER/ADMIN_PASSWORD unset)" ;;
   *)   fail "/admin/dashboard -> $code (expected 401 or 404)" ;;
 esac
+
+echo "WebSockets"
+probe_dir=$(mktemp -d)
+cookie_file="$probe_dir/cookies"
+lobby_file="$probe_dir/lobby"
+
+cleanup_probe() {
+  rm -f -- "$cookie_file" "$lobby_file"
+  rmdir -- "$probe_dir" 2>/dev/null || true
+}
+trap cleanup_probe EXIT
+
+if curl -fsS --max-time 10 -c "$cookie_file" "$PUBLIC/lobby" >"$lobby_file"; then
+  socket_token=$(sed -n 's/.*<meta name="socket-token" content="\([^"]*\)".*/\1/p' \
+    "$lobby_file" | head -1)
+else
+  socket_token=""
+fi
+
+websocket_status() {
+  local origin="$1"
+  local origin_args=()
+  if [[ -n "$origin" ]]; then
+    origin_args=(-H "Origin: $origin")
+  fi
+
+  curl -ksS --http1.1 --max-time 3 -b "$cookie_file" -o /dev/null -w '%{http_code}' \
+    -H 'Connection: Upgrade' \
+    -H 'Upgrade: websocket' \
+    -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+    "${origin_args[@]}" \
+    "$PUBLIC/socket/websocket?token=$socket_token&vsn=2.0.0" 2>/dev/null || true
+}
+
+if [[ -z "$socket_token" ]]; then
+  fail "could not obtain a signed socket token"
+else
+  good_origin=$(websocket_status "$PUBLIC")
+  bad_origin=$(websocket_status "https://evil.example")
+  missing_origin=$(websocket_status "")
+
+  if [[ "$good_origin" == "101" ]]; then
+    ok "approved Origin -> 101"
+  else
+    fail "approved Origin -> $good_origin"
+  fi
+
+  if [[ "$bad_origin" == "403" ]]; then
+    ok "hostile Origin -> 403"
+  else
+    fail "hostile Origin -> $bad_origin"
+  fi
+
+  if [[ "$missing_origin" == "403" ]]; then
+    ok "missing Origin -> 403"
+  else
+    fail "missing Origin -> $missing_origin"
+  fi
+fi
 
 echo
 if [[ "$failures" -gt 0 ]]; then

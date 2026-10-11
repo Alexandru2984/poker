@@ -111,18 +111,13 @@ two silently drifted apart. Keep it a symlink.
 The vhost depends on the host-wide `conf.d/cloudflare-realip.conf`, shared with
 the other sites on this machine and not duplicated here.
 
-**`poker.micutu.com` is a DNS-only record** — it resolves straight to this host,
-not to Cloudflare, unlike most of the other sites here. Two things follow, and
-both are wrong if the record is ever orange-clouded:
-
-- The Cloudflare origin guard stays commented out in the vhost. Enabling it on a
-  grey-clouded record returns 444 to every real visitor.
-- `TRUST_CLOUDFLARE=false`. The app's peer is always loopback, which is trusted,
-  so believing an inbound `CF-Connecting-IP` would let a client choose its own
-  address and walk past every per-IP limit. nginx overwrites that header on the
-  way through as a second line of defence.
-
-`./scripts/deploy_check.sh` reports which of the two you are on.
+**`poker.micutu.com` is proxied by Cloudflare.** The vhost's origin guard is
+enabled. `TRUST_CLOUDFLARE=false` remains deliberately conservative: nginx
+resolves the real client only from known Cloudflare peers, overwrites both
+forwarded address headers, and the app trusts only its loopback proxy. Direct
+origin HTTPS is denied, and WebSocket upgrades require the exact public HTTPS
+Origin. The deployment check asserts these controls instead of merely reporting
+DNS.
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx

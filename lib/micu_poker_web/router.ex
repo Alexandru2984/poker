@@ -142,14 +142,6 @@ defmodule MicuPokerWeb.Router do
   end
 
   defp admin_credentials do
-    username = System.get_env("ADMIN_USER")
-    password = System.get_env("ADMIN_PASSWORD")
-
-    # A short password here would be brute-forceable; refuse rather than mount a
-    # weakly protected dashboard.
-    if is_binary(username) and is_binary(password) and username != "" and
-         byte_size(password) >= 16 do
-      {username, password}
-    end
+    Application.get_env(:micu_poker, :admin_credentials)
   end
 end

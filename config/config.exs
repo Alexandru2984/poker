@@ -9,7 +9,8 @@ import Config
 
 config :micu_poker,
   ecto_repos: [MicuPoker.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  admin_credentials: nil
 
 # Signed *and* encrypted session cookie. `secure: true` is switched on in prod,
 # where the app is only ever reachable over HTTPS through nginx.

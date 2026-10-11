@@ -21,12 +21,7 @@ if System.get_env("PHX_SERVER") do
 end
 
 if config_env() == :prod do
-  database_url =
-    System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
+  database_url = MicuPoker.SecretFile.fetch!("DATABASE_URL")
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
@@ -47,12 +42,30 @@ if config_env() == :prod do
   # want to use a different value for prod and you most likely don't want
   # to check this value into version control, so we use an environment
   # variable instead.
-  secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
-      raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
-      """
+  secret_key_base = MicuPoker.SecretFile.fetch!("SECRET_KEY_BASE")
+
+  if byte_size(secret_key_base) < 64 do
+    raise "SECRET_KEY_BASE must contain at least 64 bytes"
+  end
+
+  admin_credentials =
+    case {System.get_env("ADMIN_USER"), MicuPoker.SecretFile.fetch("ADMIN_PASSWORD")} do
+      {nil, :missing} ->
+        nil
+
+      {"", :missing} ->
+        nil
+
+      {username, {:ok, password}}
+      when is_binary(username) and username != "" and byte_size(username) <= 128 and
+             byte_size(password) >= 16 ->
+        {username, password}
+
+      {_username, _password} ->
+        raise "ADMIN_USER and ADMIN_PASSWORD must both be valid, or both be absent"
+    end
+
+  config :micu_poker, admin_credentials: admin_credentials
 
   host = System.get_env("PHX_HOST") || "example.com"
 

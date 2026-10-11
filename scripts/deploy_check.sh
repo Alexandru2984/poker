@@ -136,12 +136,31 @@ websocket_status() {
     "$PUBLIC/socket/websocket?token=$socket_token&vsn=2.0.0" 2>/dev/null || true
 }
 
+websocket_local_denial_status() {
+  local origin="$1"
+  local origin_args=()
+  if [[ -n "$origin" ]]; then
+    origin_args=(-H "Origin: $origin")
+  fi
+
+  curl -ksS --http1.1 --max-time 3 --resolve "$PHX_HOST:443:127.0.0.1" \
+    -o /dev/null -w '%{http_code}' \
+    -H 'Connection: Upgrade' \
+    -H 'Upgrade: websocket' \
+    -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+    "${origin_args[@]}" \
+    "$PUBLIC/socket/websocket?token=invalid&vsn=2.0.0" 2>/dev/null || true
+}
+
 if [[ -z "$socket_token" ]]; then
   fail "could not obtain a signed socket token"
 else
   good_origin=$(websocket_status "$PUBLIC")
   bad_origin=$(websocket_status "https://evil.example")
   missing_origin=$(websocket_status "")
+  local_bad_origin=$(websocket_local_denial_status "https://evil.example")
+  local_missing_origin=$(websocket_local_denial_status "")
 
   if [[ "$good_origin" == "101" ]]; then
     ok "approved Origin -> 101"
@@ -149,16 +168,20 @@ else
     fail "approved Origin -> $good_origin"
   fi
 
-  if [[ "$bad_origin" == "403" ]]; then
-    ok "hostile Origin -> 403"
-  else
-    fail "hostile Origin -> $bad_origin"
-  fi
+  case "$bad_origin" in
+    403|502) ok "hostile Origin is blocked (edge status $bad_origin)" ;;
+    *) fail "hostile Origin -> $bad_origin" ;;
+  esac
 
-  if [[ "$missing_origin" == "403" ]]; then
-    ok "missing Origin -> 403"
+  case "$missing_origin" in
+    403|502) ok "missing Origin is blocked (edge status $missing_origin)" ;;
+    *) fail "missing Origin -> $missing_origin" ;;
+  esac
+
+  if [[ "$local_bad_origin" == "403" && "$local_missing_origin" == "403" ]]; then
+    ok "nginx rejects hostile and missing Origin with 403"
   else
-    fail "missing Origin -> $missing_origin"
+    fail "nginx Origin gate -> hostile=$local_bad_origin missing=$local_missing_origin"
   fi
 fi
 

@@ -132,6 +132,8 @@ trap 'rollback; cleanup_build' EXIT
 sudo test ! -e "$release"
 sudo install -d -o root -g root -m 0755 "$RELEASE_ROOT" "$RELEASE_ROOT/releases" "$release"
 sudo cp -a "$build_dir/_build/prod/rel/micu_poker/." "$release/"
+sudo install -d -o root -g root -m 0755 "$release/ops"
+sudo cp -a "$build_dir/deploy/postgres" "$release/ops/"
 printf '%s\n' "$release_sha" | sudo tee "$release/.release-commit" >/dev/null
 sudo chown -R root:root "$release"
 sudo bash -c 'cd "$1" && find . -type f ! -name .release-manifest.sha256 -print0 | sort -z | xargs -0 sha256sum >.release-manifest.sha256' -- "$release"
@@ -161,6 +163,9 @@ fi
 
 sudo systemctl reset-failed "micupoker-migrate@$release_id.service" >/dev/null 2>&1 || true
 sudo systemctl start "micupoker-migrate@$release_id.service"
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d micupoker \
+  -f "$release/ops/postgres/runtime_privileges.sql"
+"$ROOT_DIR/scripts/check_database_privileges.sh" --allow-legacy
 
 sudo ln -s "$release" "$RELEASE_ROOT/.next-$release_id"
 sudo mv -Tf "$RELEASE_ROOT/.next-$release_id" "$RELEASE_ROOT/current"

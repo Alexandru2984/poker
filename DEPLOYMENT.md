@@ -51,3 +51,17 @@ sudo systemctl restart micupoker.service
 Database migrations must remain backward-compatible with the prior release.
 The release rollback does not reverse schema or data changes; use the verified
 pre-deploy backup only as an incident-recovery decision, never automatically.
+
+## Database roles
+
+`micupoker_migrate` owns the database, schema and objects. `micupoker_app` has
+only table DML and sequence usage, with no access to `schema_migrations`.
+`micupoker_backup` can only read. The first transition deliberately grants the
+legacy `micupoker_user` a temporary DML bridge so the old unit remains a valid
+rollback target. After the new runtime passes all probes:
+
+```bash
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 \
+  -f deploy/postgres/retire_legacy_role.sql
+./scripts/check_database_privileges.sh
+```

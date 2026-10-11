@@ -6,14 +6,10 @@
 
 set -euo pipefail
 
-cd /home/micu/poker
-set -a
-# shellcheck disable=SC1091
-. ./.env
-set +a
-
-ORIGIN="http://127.0.0.1:${PORT}"
-PUBLIC="https://${PHX_HOST}"
+PHX_HOST="${PHX_HOST:-poker.micutu.com}"
+PORT="${PORT:-4100}"
+ORIGIN="${ORIGIN:-http://127.0.0.1:${PORT}}"
+PUBLIC="${PUBLIC:-https://${PHX_HOST}}"
 ORIGIN_IP="${ORIGIN_IP:-185.254.97.77}"
 
 failures=0

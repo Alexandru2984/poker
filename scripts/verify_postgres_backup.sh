@@ -73,8 +73,7 @@ runuser -u postgres -- pg_restore \
   --no-owner \
   --no-privileges \
   --role "$restore_role" \
-  --dbname "$restore_db" \
-  "$dump_file"
+  --dbname "$restore_db" <"$dump_file"
 
 runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d "$restore_db" -Atqc "
   set role \"$restore_role\";

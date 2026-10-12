@@ -129,7 +129,7 @@ rollback() {
     sudo ln -s "$previous" "$RELEASE_ROOT/.rollback-$release_id"
     sudo mv -Tf "$RELEASE_ROOT/.rollback-$release_id" "$RELEASE_ROOT/current"
     sudo systemctl restart "$SERVICE"
-  elif [[ "$unit_installed" == "true" && -f "$rollback_dir/micupoker.service" ]]; then
+  elif [[ "$unit_installed" == "true" ]] && sudo test -f "$rollback_dir/micupoker.service"; then
     echo "initial deploy failed; restoring the legacy service unit" >&2
     sudo cp -a "$rollback_dir/micupoker.service" /etc/systemd/system/micupoker.service
     if [[ "$switched" == "true" && "$(readlink -f "$RELEASE_ROOT/current" 2>/dev/null || true)" == "$release" ]]; then

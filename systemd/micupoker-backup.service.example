@@ -10,13 +10,14 @@ User=micupoker-backup
 Group=micupoker-backup
 WorkingDirectory=/var/backups/micupoker
 LoadCredential=pgpass:/etc/micupoker/credentials/backup_pgpass
-Environment=PGPASSFILE=%d/pgpass
+Environment=PGPASSFILE=/run/micupoker-backup/pgpass
 Environment=PGHOST=127.0.0.1
 Environment=PGPORT=5432
 Environment=PGDATABASE=micupoker
 Environment=PGUSER=micupoker_backup
 Environment=MICUPOKER_BACKUP_DIR=/var/backups/micupoker
 Environment=MICUPOKER_BACKUP_RETENTION_DAYS=30
+ExecStartPre=/usr/bin/install -m 0600 %d/pgpass /run/micupoker-backup/pgpass
 ExecStart=/opt/micupoker/current/ops/backup_postgres.sh
 
 NoNewPrivileges=true
@@ -48,7 +49,9 @@ SystemCallErrorNumber=EPERM
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 IPAddressDeny=any
 IPAddressAllow=localhost
-ReadWritePaths=/var/backups/micupoker
+RuntimeDirectory=micupoker-backup
+RuntimeDirectoryMode=0700
+ReadWritePaths=/run/micupoker-backup /var/backups/micupoker
 TasksMax=64
 MemoryMax=512M
 CPUQuota=200%

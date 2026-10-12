@@ -8,6 +8,50 @@ Scope: application code, the realtime layer, card privacy, action validation,
 authentication, the reverse proxy, the systemd sandbox, and the play-money
 constraint.
 
+Production isolation follow-up: 2026-10-12
+
+## Production isolation follow-up
+
+The October review closed the gap between the hardened application code and
+the process that actually runs on the shared host:
+
+- production runs from a checksummed, root-owned immutable release as the
+  dedicated non-login `micupoker` account, not from the interactive checkout
+  and not as `micu`;
+- the service has no effective capabilities, has `NoNewPrivileges` enabled,
+  cannot see the checkout in its mount namespace, and binds only to
+  `127.0.0.1:4100`;
+- runtime, migration and backup database access use separate credentials and
+  least-privilege roles. The former `micupoker_user` and `micu` roles cannot
+  connect to the production database;
+- production secrets are root-owned systemd credentials. Builds receive only
+  `TEST_DATABASE_URL` from `/etc/micupoker-build.env` and fail closed when that
+  file is unavailable; there is no fallback to a checkout `.env`;
+- a daily least-privilege backup creates protected, checksummed custom-format
+  dumps. A restore drill proved the newest dump in a disposable database and
+  checked migrations, row counts, constraints and ledger invariants;
+- a five-minute independent probe checks both health paths, process identity,
+  restart rate, release integrity and backup freshness. Service failures use
+  the shared host e-mail alert path; both a real alert and duplicate throttling
+  were exercised;
+- the deployment path was tested through failure and rollback before a
+  successful release switch. Obsolete checkout secrets, crash output and the
+  old production build were moved into a root-only, checksummed quarantine so
+  recovery remains possible without leaving them reachable by the service.
+
+The exact revision `fa33666` subsequently passed a detached build without a
+checkout `.env`: 300 tests, production compilation and release assembly, a
+clean Hex security audit, and the formatting and shell gates. Live probes also
+confirmed Cloudflare proxying, direct-origin denial, required headers,
+authenticated admin access, approved WebSocket upgrade and denial of hostile
+or missing WebSocket origins.
+
+Residual production risks are explicit: database backups are still local to
+this VPS rather than encrypted and replicated off-host; the alert-provider
+credential needs its planned manual rotation; and the incident runbook still
+needs a recorded tabletop exercise. These controls are not considered closed
+until their external dependencies and recovery evidence exist.
+
 ## Threat model
 
 The attacker is a player. They can hold a legitimate seat, open a WebSocket,
@@ -220,9 +264,11 @@ frontend, the README or any public response.
 ## Verifying
 
 ```bash
-mix test                        # 296 tests
+mix test                        # 300 tests
 mix compile --warnings-as-errors
 ./scripts/deploy_check.sh       # headers, duplication, pages, admin route
+./scripts/check_database_privileges.sh
+sudo systemctl start micupoker-healthcheck.service
 systemd-analyze security micupoker.service
 ```
 

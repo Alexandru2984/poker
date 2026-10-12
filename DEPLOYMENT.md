@@ -81,3 +81,11 @@ sudo /opt/micupoker/current/ops/verify_postgres_backup.sh \
 The verifier requires safe ownership and mode, validates the checksum and
 archive, restores into a uniquely named scratch database, checks schema/data
 counts and ledger invariants, and drops the scratch database on exit.
+
+## Detection and response
+
+The micupoker-healthcheck timer runs every five minutes and checks both health
+paths, the dedicated runtime identity, restart rate, release integrity and the
+latest backup result and age. Unit and probe failures invoke the host's
+independent e-mail alert handler. See INCIDENT_RESPONSE.md for containment,
+evidence, credential rotation and recovery procedures.

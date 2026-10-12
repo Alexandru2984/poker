@@ -107,6 +107,10 @@ rollback_dir="/home/micu/backups/service-migrations/micupoker-deploy-$release_id
 switched=false
 deploy_ok=false
 unit_installed=false
+backup_timer_was_enabled=false
+healthcheck_timer_was_enabled=false
+systemctl is-enabled --quiet micupoker-backup.timer 2>/dev/null && backup_timer_was_enabled=true
+systemctl is-enabled --quiet micupoker-healthcheck.timer 2>/dev/null && healthcheck_timer_was_enabled=true
 
 rollback() {
   if [[ "$deploy_ok" == "true" ]]; then
@@ -114,6 +118,12 @@ rollback() {
   fi
 
   set +e
+  if [[ "$backup_timer_was_enabled" == "false" ]]; then
+    sudo systemctl disable --now micupoker-backup.timer >/dev/null 2>&1
+  fi
+  if [[ "$healthcheck_timer_was_enabled" == "false" ]]; then
+    sudo systemctl disable --now micupoker-healthcheck.timer >/dev/null 2>&1
+  fi
   if [[ "$switched" == "true" && -n "$previous" && -d "$previous" ]]; then
     echo "deploy failed; restoring release $previous" >&2
     sudo ln -s "$previous" "$RELEASE_ROOT/.rollback-$release_id"
@@ -140,6 +150,8 @@ sudo install -d -o root -g root -m 0755 "$release/ops"
 sudo cp -a "$build_dir/deploy/postgres" "$release/ops/"
 sudo install -o root -g root -m 0755 \
   "$build_dir/scripts/backup_postgres.sh" \
+  "$build_dir/scripts/healthcheck.sh" \
+  "$build_dir/scripts/verify_release.sh" \
   "$build_dir/scripts/verify_postgres_backup.sh" \
   "$release/ops/"
 printf '%s\n' "$release_sha" | sudo tee "$release/.release-commit" >/dev/null
@@ -167,6 +179,12 @@ sudo install -o root -g root -m 0644 \
 sudo install -o root -g root -m 0644 \
   "$ROOT_DIR/systemd/micupoker-backup.timer.example" \
   /etc/systemd/system/micupoker-backup.timer
+sudo install -o root -g root -m 0644 \
+  "$ROOT_DIR/systemd/micupoker-healthcheck.service.example" \
+  /etc/systemd/system/micupoker-healthcheck.service
+sudo install -o root -g root -m 0644 \
+  "$ROOT_DIR/systemd/micupoker-healthcheck.timer.example" \
+  /etc/systemd/system/micupoker-healthcheck.timer
 unit_installed=true
 sudo nginx -t
 sudo systemctl daemon-reload
@@ -201,6 +219,6 @@ main_pid=$(systemctl show "$SERVICE" -p MainPID --value)
 process_exe=$(sudo readlink -f "/proc/$main_pid/exe")
 [[ "$process_exe" == "$release"/* ]]
 
-sudo systemctl enable --now micupoker-backup.timer
+sudo systemctl enable --now micupoker-backup.timer micupoker-healthcheck.timer
 deploy_ok=true
 echo "release=$release_id status=healthy rollback=$rollback_dir"

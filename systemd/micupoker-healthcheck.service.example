@@ -1,0 +1,47 @@
+[Unit]
+Description=MicuPoker production health and integrity probe
+After=network-online.target micupoker.service micupoker-backup.service
+Wants=network-online.target
+OnFailure=swift-vapor-alert@%n.service
+
+[Service]
+Type=oneshot
+User=micupoker-monitor
+Group=micupoker-monitor
+ExecStart=/opt/micupoker/current/ops/healthcheck.sh
+TimeoutStartSec=120
+
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+PrivateMounts=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+KeyringMode=private
+MemoryDenyWriteExecute=true
+UMask=0077
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+StateDirectory=micupoker-monitor
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/micupoker-monitor
+TasksMax=32
+MemoryMax=128M
+CPUQuota=100%

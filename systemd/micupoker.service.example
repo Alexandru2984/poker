@@ -4,6 +4,7 @@ Documentation=https://poker.micutu.com/docs
 After=network-online.target postgresql.service
 Wants=network-online.target
 Requires=postgresql.service
+OnFailure=swift-vapor-alert@%n.service
 StartLimitIntervalSec=300
 StartLimitBurst=5
 

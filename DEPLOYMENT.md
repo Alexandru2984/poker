@@ -71,7 +71,9 @@ sudo -u postgres psql -X -v ON_ERROR_STOP=1 \
 `micupoker-backup.timer` creates a custom-format, checksummed PostgreSQL dump
 each day under `/var/backups/micupoker` as the non-login `micupoker-backup`
 identity. The role cannot write production data and the unit can only reach
-localhost and its backup directory. Restore drills never target production:
+localhost and its backup directory. The directory uses mode `0710`; the monitor
+can stat the fixed success marker but cannot list or read backup artifacts.
+Restore drills never target production:
 
 ```bash
 sudo /opt/micupoker/current/ops/verify_postgres_backup.sh \

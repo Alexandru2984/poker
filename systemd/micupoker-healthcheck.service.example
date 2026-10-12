@@ -8,6 +8,7 @@ OnFailure=swift-vapor-alert@%n.service
 Type=oneshot
 User=micupoker-monitor
 Group=micupoker-monitor
+SupplementaryGroups=micupoker-backup
 ExecStart=/opt/micupoker/current/ops/healthcheck.sh
 TimeoutStartSec=120
 

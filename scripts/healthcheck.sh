@@ -4,6 +4,7 @@ set -euo pipefail
 SERVICE="${MICUPOKER_HEALTH_SERVICE:-micupoker.service}"
 BACKUP_SERVICE="${MICUPOKER_BACKUP_SERVICE:-micupoker-backup.service}"
 BACKUP_TIMER="${MICUPOKER_BACKUP_TIMER:-micupoker-backup.timer}"
+BACKUP_SUCCESS_FILE="${MICUPOKER_BACKUP_SUCCESS_FILE:-/var/backups/micupoker/.last-success}"
 LOCAL_URL="${MICUPOKER_HEALTH_LOCAL_URL:-http://127.0.0.1:4100/health}"
 PUBLIC_URL="${MICUPOKER_HEALTH_PUBLIC_URL:-https://poker.micutu.com/health}"
 RELEASE_ROOT="${MICUPOKER_RELEASE_ROOT:-/opt/micupoker}"
@@ -73,18 +74,17 @@ fi
 
 backup_result=$(systemctl show "$BACKUP_SERVICE" -p Result --value 2>/dev/null || true)
 backup_status=$(systemctl show "$BACKUP_SERVICE" -p ExecMainStatus --value 2>/dev/null || true)
-backup_finished=$(systemctl show "$BACKUP_SERVICE" -p ExecMainExitTimestampMonotonic --value 2>/dev/null || true)
 if [[ "$backup_result" != "success" || "$backup_status" != "0" ]]; then
   note "$BACKUP_SERVICE last result is not successful"
-elif [[ ! "$backup_finished" =~ ^[1-9][0-9]*$ ]]; then
-  note "$BACKUP_SERVICE has no successful completion timestamp for this boot"
+elif [[ ! -f "$BACKUP_SUCCESS_FILE" ]]; then
+  note "$BACKUP_SERVICE has no successful completion marker"
 else
-  uptime_seconds=$(cut -d. -f1 /proc/uptime)
-  now_monotonic=$((uptime_seconds * 1000000))
-  if (( backup_finished > now_monotonic )); then
-    note "$BACKUP_SERVICE completion timestamp is inconsistent"
+  backup_finished=$(stat -c '%Y' "$BACKUP_SUCCESS_FILE" 2>/dev/null || true)
+  now_epoch=$(date +%s)
+  if [[ ! "$backup_finished" =~ ^[1-9][0-9]*$ ]] || (( backup_finished > now_epoch )); then
+    note "$BACKUP_SERVICE completion marker is invalid"
   else
-    backup_age_hours=$(((now_monotonic - backup_finished) / 3600000000))
+    backup_age_hours=$(((now_epoch - backup_finished) / 3600))
     if (( backup_age_hours > BACKUP_MAX_AGE_HOURS )); then
       note "$BACKUP_SERVICE last successful run is ${backup_age_hours}h old"
     fi

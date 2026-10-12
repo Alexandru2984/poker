@@ -18,8 +18,8 @@ RETENTION_DAYS="${MICUPOKER_BACKUP_RETENTION_DAYS:-30}"
   echo "backup directory must be a real directory: $BACKUP_DIR" >&2
   exit 1
 }
-[[ "$(stat -c '%u:%a' "$BACKUP_DIR")" == "$(id -u):700" ]] || {
-  echo "backup directory must be owned by the service identity with mode 0700" >&2
+[[ "$(stat -c '%u:%a' "$BACKUP_DIR")" == "$(id -u):710" ]] || {
+  echo "backup directory must be owned by the service identity with mode 0710" >&2
   exit 1
 }
 
@@ -63,5 +63,7 @@ mv -- "$checksum_temporary" "$checksum"
 find "$BACKUP_DIR" -maxdepth 1 -type f \
   \( -name 'micupoker_*.dump' -o -name 'micupoker_*.dump.sha256' \) \
   -mtime "+$RETENTION_DAYS" -delete
+touch "$BACKUP_DIR/.last-success"
+chmod 0600 "$BACKUP_DIR/.last-success"
 
 echo "backup=created file=$final"

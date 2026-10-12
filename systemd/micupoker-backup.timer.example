@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily MicuPoker PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* 03:23:00
+RandomizedDelaySec=30m
+Persistent=true
+AccuracySec=1m
+Unit=micupoker-backup.service
+
+[Install]
+WantedBy=timers.target

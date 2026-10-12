@@ -19,7 +19,7 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || { echo "missing required command: $1" >&2; exit 1; }
 }
 
-for command in curl flock git mix nginx sha256sum shellcheck sudo systemctl; do
+for command in curl flock git mix nginx pg_dump pg_restore psql sha256sum shellcheck sudo systemctl; do
   require_command "$command"
 done
 
@@ -96,7 +96,8 @@ for path in \
   /etc/micupoker/credentials/database_url \
   /etc/micupoker/credentials/migrate_database_url \
   /etc/micupoker/credentials/secret_key_base \
-  /etc/micupoker/credentials/admin_password; do
+  /etc/micupoker/credentials/admin_password \
+  /etc/micupoker/credentials/backup_pgpass; do
   sudo test -s "$path" || { echo "required production configuration is missing: $path" >&2; exit 1; }
 done
 
@@ -121,6 +122,9 @@ rollback() {
   elif [[ "$unit_installed" == "true" && -f "$rollback_dir/micupoker.service" ]]; then
     echo "initial deploy failed; restoring the legacy service unit" >&2
     sudo cp -a "$rollback_dir/micupoker.service" /etc/systemd/system/micupoker.service
+    if [[ "$switched" == "true" && "$(readlink -f "$RELEASE_ROOT/current" 2>/dev/null || true)" == "$release" ]]; then
+      sudo unlink "$RELEASE_ROOT/current"
+    fi
     sudo systemctl daemon-reload
     if [[ "$switched" == "true" ]]; then
       sudo systemctl restart "$SERVICE"
@@ -134,6 +138,10 @@ sudo install -d -o root -g root -m 0755 "$RELEASE_ROOT" "$RELEASE_ROOT/releases"
 sudo cp -a "$build_dir/_build/prod/rel/micu_poker/." "$release/"
 sudo install -d -o root -g root -m 0755 "$release/ops"
 sudo cp -a "$build_dir/deploy/postgres" "$release/ops/"
+sudo install -o root -g root -m 0755 \
+  "$build_dir/scripts/backup_postgres.sh" \
+  "$build_dir/scripts/verify_postgres_backup.sh" \
+  "$release/ops/"
 printf '%s\n' "$release_sha" | sudo tee "$release/.release-commit" >/dev/null
 sudo chown -R root:root "$release"
 sudo bash -c 'cd "$1" && find . -type f ! -name .release-manifest.sha256 -print0 | sort -z | xargs -0 sha256sum >.release-manifest.sha256' -- "$release"
@@ -153,13 +161,21 @@ sudo install -o root -g root -m 0644 \
 sudo install -o root -g root -m 0644 \
   "$ROOT_DIR/systemd/micupoker-migrate@.service.example" \
   /etc/systemd/system/micupoker-migrate@.service
+sudo install -o root -g root -m 0644 \
+  "$ROOT_DIR/systemd/micupoker-backup.service.example" \
+  /etc/systemd/system/micupoker-backup.service
+sudo install -o root -g root -m 0644 \
+  "$ROOT_DIR/systemd/micupoker-backup.timer.example" \
+  /etc/systemd/system/micupoker-backup.timer
 unit_installed=true
 sudo nginx -t
 sudo systemctl daemon-reload
 
-if systemctl list-unit-files micupoker-backup.service --no-legend 2>/dev/null | grep -q micupoker-backup; then
-  sudo systemctl start micupoker-backup.service
-fi
+sudo ln -s "$release" "$RELEASE_ROOT/.next-$release_id"
+sudo mv -Tf "$RELEASE_ROOT/.next-$release_id" "$RELEASE_ROOT/current"
+switched=true
+
+sudo systemctl start micupoker-backup.service
 
 sudo systemctl reset-failed "micupoker-migrate@$release_id.service" >/dev/null 2>&1 || true
 sudo systemctl start "micupoker-migrate@$release_id.service"
@@ -167,9 +183,6 @@ sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d micupoker \
   -f "$release/ops/postgres/runtime_privileges.sql"
 "$ROOT_DIR/scripts/check_database_privileges.sh" --allow-legacy
 
-sudo ln -s "$release" "$RELEASE_ROOT/.next-$release_id"
-sudo mv -Tf "$RELEASE_ROOT/.next-$release_id" "$RELEASE_ROOT/current"
-switched=true
 sudo systemctl restart "$SERVICE"
 
 for _attempt in {1..80}; do
@@ -188,5 +201,6 @@ main_pid=$(systemctl show "$SERVICE" -p MainPID --value)
 process_exe=$(sudo readlink -f "/proc/$main_pid/exe")
 [[ "$process_exe" == "$release"/* ]]
 
+sudo systemctl enable --now micupoker-backup.timer
 deploy_ok=true
 echo "release=$release_id status=healthy rollback=$rollback_dir"

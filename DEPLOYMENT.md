@@ -65,3 +65,19 @@ sudo -u postgres psql -X -v ON_ERROR_STOP=1 \
   -f deploy/postgres/retire_legacy_role.sql
 ./scripts/check_database_privileges.sh
 ```
+
+## Backups
+
+`micupoker-backup.timer` creates a custom-format, checksummed PostgreSQL dump
+each day under `/var/backups/micupoker` as the non-login `micupoker-backup`
+identity. The role cannot write production data and the unit can only reach
+localhost and its backup directory. Restore drills never target production:
+
+```bash
+sudo /opt/micupoker/current/ops/verify_postgres_backup.sh \
+  /var/backups/micupoker/micupoker_TIMESTAMP.dump
+```
+
+The verifier requires safe ownership and mode, validates the checksum and
+archive, restores into a uniquely named scratch database, checks schema/data
+counts and ledger invariants, and drops the scratch database on exit.

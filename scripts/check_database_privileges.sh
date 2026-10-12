@@ -79,9 +79,9 @@ BEGIN
   END LOOP;
 
   FOR sequence_name IN
-    SELECT format('%I.%I', sequence_schema, sequence_name)
-    FROM information_schema.sequences
-    WHERE sequence_schema = 'public'
+    SELECT format('%I.%I', candidate.sequence_schema, candidate.sequence_name)
+    FROM information_schema.sequences AS candidate
+    WHERE candidate.sequence_schema = 'public'
   LOOP
     IF NOT has_sequence_privilege('micupoker_app', sequence_name, 'USAGE') OR
        NOT has_sequence_privilege('micupoker_app', sequence_name, 'SELECT') OR

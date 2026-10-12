@@ -19,6 +19,11 @@ defmodule MicuPokerWeb.Endpoint do
     websocket: [connect_info: @connect_info],
     longpoll: false
 
+  # Apply the response policy before Plug.Static and the router so JSON,
+  # health, error and static responses cannot silently fall outside the
+  # browser pipeline's security boundary.
+  plug MicuPokerWeb.Plugs.SecurityHeaders
+
   # Serve at "/" the static files from "priv/static" directory.
   plug Plug.Static,
     at: "/",

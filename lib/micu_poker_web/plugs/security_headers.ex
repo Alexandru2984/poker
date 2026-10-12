@@ -1,10 +1,10 @@
 defmodule MicuPokerWeb.Plugs.SecurityHeaders do
   @moduledoc """
-  Adds the response headers Phoenix's `put_secure_browser_headers/2` leaves out.
+  Adds the response headers required across the entire HTTP endpoint.
 
-  Notably a Content-Security-Policy, HSTS, and the cross-origin isolation
-  headers. Nginx also sets a few of these, but the app must not depend on a
-  correctly configured proxy for its own security posture.
+  This plug runs before both `Plug.Static` and the router, so API, health, error
+  and static responses receive the same baseline as browser pages. Nginx must
+  not be the only source of these controls.
 
   `style-src` allows inline styles because the poker table positions seats with
   `style="--seat-angle: ..."` custom properties. No inline scripts are used, so
@@ -25,6 +25,8 @@ defmodule MicuPokerWeb.Plugs.SecurityHeaders do
     |> put_resp_header("cross-origin-opener-policy", "same-origin")
     |> put_resp_header("cross-origin-resource-policy", "same-origin")
     |> put_resp_header("x-permitted-cross-domain-policies", "none")
+    |> put_resp_header("x-content-type-options", "nosniff")
+    |> put_resp_header("x-frame-options", "DENY")
     |> put_resp_header("referrer-policy", "strict-origin-when-cross-origin")
     |> put_resp_header(
       "permissions-policy",

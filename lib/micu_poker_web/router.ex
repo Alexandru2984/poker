@@ -10,7 +10,6 @@ defmodule MicuPokerWeb.Router do
     plug :put_root_layout, html: {MicuPokerWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers, %{"x-frame-options" => "DENY"}
-    plug MicuPokerWeb.Plugs.SecurityHeaders
     plug :fetch_current_user
   end
 

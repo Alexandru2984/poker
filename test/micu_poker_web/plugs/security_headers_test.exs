@@ -51,6 +51,24 @@ defmodule MicuPokerWeb.Plugs.SecurityHeadersTest do
     assert header(conn, "x-content-type-options") == "nosniff"
   end
 
+  test "the policy covers API, health, error and static responses" do
+    for path <- ["/api/stats", "/health", "/not-found", "/favicon.ico"] do
+      conn = get(build_conn(), path)
+
+      assert header(conn, "content-security-policy") =~ "default-src 'self'",
+             "missing CSP on #{path}"
+
+      assert header(conn, "x-content-type-options") == "nosniff",
+             "missing nosniff on #{path}"
+
+      assert header(conn, "x-frame-options") == "DENY",
+             "missing frame denial on #{path}"
+
+      assert header(conn, "referrer-policy") == "strict-origin-when-cross-origin",
+             "missing referrer policy on #{path}"
+    end
+  end
+
   test "permissions policy denies sensitive browser features", %{conn: conn} do
     policy = conn |> get(~p"/") |> header("permissions-policy")
 

@@ -6,7 +6,7 @@ BRANCH="${MICUPOKER_DEPLOY_BRANCH:-main}"
 SERVICE="${MICUPOKER_SERVICE:-micupoker.service}"
 RELEASE_ROOT="${MICUPOKER_RELEASE_ROOT:-/opt/micupoker}"
 LOCK_FILE="${MICUPOKER_DEPLOY_LOCK:-/tmp/micupoker-deploy.lock}"
-BUILD_ENV="${MICUPOKER_BUILD_ENV:-/etc/micupoker/build.env}"
+BUILD_ENV="${MICUPOKER_BUILD_ENV:-/etc/micupoker-build.env}"
 BUILD_ONLY=false
 
 case "${1:-}" in
@@ -44,10 +44,7 @@ release_id="${release_sha:0:12}-$(date -u +%Y%m%dT%H%M%SZ)"
   exit 1
 }
 
-if [[ ! -r "$BUILD_ENV" ]]; then
-  BUILD_ENV="$ROOT_DIR/.env"
-fi
-[[ -r "$BUILD_ENV" ]] || { echo "no readable build environment" >&2; exit 1; }
+[[ -r "$BUILD_ENV" ]] || { echo "dedicated build environment is not readable: $BUILD_ENV" >&2; exit 1; }
 
 temporary_root=$(mktemp -d /tmp/micupoker-build.XXXXXX)
 build_dir="$temporary_root/repo"

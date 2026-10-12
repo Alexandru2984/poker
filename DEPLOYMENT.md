@@ -32,9 +32,10 @@ separate migration credential, switches the symlink atomically and runs public,
 origin and WebSocket probes. A failure after the switch restores the previous
 release. The first rollout additionally preserves and restores the legacy unit.
 
-Deployments require a clean `main` worktree. `/etc/micupoker/build.env` should
-contain only `TEST_DATABASE_URL`; the production database credential is never
-available to the build process.
+Deployments require a clean `main` worktree. `/etc/micupoker-build.env` must
+contain only `TEST_DATABASE_URL`; there is deliberately no fallback to the
+checkout `.env`, so production credentials are never available to the build
+process.
 
 ## Manual rollback
 

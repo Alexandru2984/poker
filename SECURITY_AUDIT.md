@@ -52,6 +52,13 @@ the systemd sandbox, and the play-money constraint.
   `RoomJanitor` never expires an active table after 4 hours, `RoomJanitor` now
   purges expired `user_tokens`, and `RoomPlayer.changeset/2` allows up to 10
   seats to match `Room.max_players/0`.
+- **High — 22 Hex dependency security advisories (CVEs in `bandit`, `ecto`,
+  `phoenix`, `phoenix_live_view`, `phoenix_html`, `plug`, `plug_crypto`, and
+  `idna`).** Upgraded `bandit` to `1.15.0`, `ecto` to `3.14.3`, `ecto_sql` to
+  `3.14.0`, `phoenix` to `1.8.17`, `phoenix_live_view` to `1.2.15`,
+  `phoenix_html` to `4.4.0`, `plug` to `1.20.4`, `plug_crypto` to `2.2.1`,
+  `swoosh` to `1.30.0`, and `idna` to `8.0.0`. `mix hex.audit` now passes with
+  zero advisories.
 
 Production isolation follow-up: 2026-10-12
 

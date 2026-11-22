@@ -9,6 +9,7 @@
       <h1>MicuPoker</h1>
     </div>
     <nav>
+      <.link navigate={~p"/calculator"}>Odds Calculator</.link>
       <.link navigate={~p"/leaderboard"}>Leaderboard</.link>
       <.link navigate={~p"/docs"}>Docs</.link>
       <%= if @current_user && !@current_user.is_guest do %>

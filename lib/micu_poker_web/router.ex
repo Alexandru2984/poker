@@ -60,6 +60,10 @@ defmodule MicuPokerWeb.Router do
     get "/leaderboard", LeaderboardController, :index
     delete "/logout", SessionController, :delete
     post "/logout", SessionController, :delete
+
+    live_session :public, on_mount: [{MicuPokerWeb.UserAuth, :mount_current_user}] do
+      live "/calculator", CalculatorLive, :index
+    end
   end
 
   scope "/", MicuPokerWeb do
@@ -86,6 +90,7 @@ defmodule MicuPokerWeb.Router do
 
     live_session :guest, on_mount: [{MicuPokerWeb.UserAuth, :default}] do
       live "/lobby", LobbyLive, :index
+      live "/profile", ProfileLive, :index
       live "/rooms/:id", TableLive, :show
     end
   end

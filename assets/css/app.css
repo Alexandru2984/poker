@@ -1891,3 +1891,28 @@ button.primary:hover:not(:disabled) {
   color: var(--gold);
   font-variant-numeric: tabular-nums;
 }
+
+.calc-cards-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.deck-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 5px;
+  overflow-x: auto;
+  padding: 6px 2px;
+}
+
+.deck-picker-grid .card.mini {
+  width: 100%;
+  min-width: 28px;
+  height: 44px;
+  padding: 0;
+}

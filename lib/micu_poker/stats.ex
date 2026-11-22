@@ -14,7 +14,7 @@ defmodule MicuPoker.Stats do
 
   alias MicuPoker.Accounts.User
   alias MicuPoker.Repo
-  alias MicuPoker.Rooms.{ChipLedger, Hand, HandAction}
+  alias MicuPoker.Rooms.{ChipLedger, Hand, HandAction, Room}
 
   @hand_reasons ["showdown", "uncontested"]
 
@@ -33,9 +33,34 @@ defmodule MicuPoker.Stats do
       net_chips: ledger.net,
       biggest_pot: ledger.biggest_win,
       rebuys: ledger.rebuys,
+      dealer_grants: ledger.dealer_grants,
       win_rate: percentage(ledger.hands_won, hands_played),
-      vpip: percentage(actions.voluntary_hands, hands_played)
+      vpip: percentage(actions.voluntary_hands, hands_played),
+      pfr: percentage(actions.pfr_hands, hands_played)
     }
+  end
+
+  @doc """
+  Recent ledger entries for a player across all rooms, newest first.
+  """
+  def player_ledger_history(user_id, limit \\ 25) do
+    from(entry in ChipLedger,
+      left_join: room in Room,
+      on: room.id == entry.room_id,
+      where: entry.user_id == ^user_id,
+      order_by: [desc: entry.id],
+      limit: ^limit,
+      select: %{
+        id: entry.id,
+        delta: entry.delta,
+        reason: entry.reason,
+        created_at: entry.created_at,
+        room_id: entry.room_id,
+        room_name: coalesce(room.name, "Table"),
+        currency: coalesce(room.currency, "CHIPS")
+      }
+    )
+    |> Repo.all()
   end
 
   @doc """
@@ -129,12 +154,20 @@ defmodule MicuPoker.Stats do
               0
             ),
           biggest_win: coalesce(filter(max(entry.delta), entry.reason in @hand_reasons), 0),
-          rebuys: coalesce(filter(count(entry.id), entry.reason == "rebuy"), 0)
+          rebuys: coalesce(filter(count(entry.id), entry.reason == "rebuy"), 0),
+          dealer_grants:
+            coalesce(
+              filter(
+                count(entry.id),
+                entry.reason in ["dealer_grant", "dealer_adjust", "dealer_reset"]
+              ),
+              0
+            )
         }
       )
       |> Repo.one()
 
-    result || %{net: 0, hands_won: 0, biggest_win: 0, rebuys: 0}
+    result || %{net: 0, hands_won: 0, biggest_win: 0, rebuys: 0, dealer_grants: 0}
   end
 
   # VPIP counts hands where the player put money in by choice. Blinds are posted
@@ -149,12 +182,17 @@ defmodule MicuPoker.Stats do
             filter(
               count(action.hand_id, :distinct),
               action.action in ["call", "bet", "raise", "all_in"]
+            ),
+          pfr_hands:
+            filter(
+              count(action.hand_id, :distinct),
+              action.street == "preflop" and action.action in ["bet", "raise", "all_in"]
             )
         }
       )
       |> Repo.one()
 
-    result || %{hands_played: 0, voluntary_hands: 0}
+    result || %{hands_played: 0, voluntary_hands: 0, pfr_hands: 0}
   end
 
   defp percentage(_part, 0), do: 0.0

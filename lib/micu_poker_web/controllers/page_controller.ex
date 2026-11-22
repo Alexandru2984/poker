@@ -29,6 +29,7 @@ defmodule MicuPokerWeb.PageController do
     <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
       <url><loc>#{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
       <url><loc>#{base}/lobby</loc><changefreq>always</changefreq><priority>0.9</priority></url>
+      <url><loc>#{base}/calculator</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
       <url><loc>#{base}/leaderboard</loc><changefreq>hourly</changefreq><priority>0.8</priority></url>
       <url><loc>#{base}/docs</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
       <url><loc>#{base}/login</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>

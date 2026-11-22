@@ -96,6 +96,65 @@ Hooks.StickToBottom = {
   }
 }
 
+// Synthesized Web Audio cues for turn notifications and street deals.
+Hooks.TableSound = {
+  mounted() {
+    this.enabled = window.localStorage.getItem("micupoker_sound") === "on"
+    this.prevTurn = this.el.dataset.turn === "true"
+    this.prevStage = this.el.dataset.stage
+    this.updateLabel()
+
+    this.el.addEventListener("click", () => {
+      this.enabled = !this.enabled
+      window.localStorage.setItem("micupoker_sound", this.enabled ? "on" : "off")
+      this.updateLabel()
+      if (this.enabled) { this.beep(587.33, 0.07) }
+    })
+  },
+
+  updated() {
+    const isTurn = this.el.dataset.turn === "true"
+    const stage = this.el.dataset.stage
+
+    if (this.enabled) {
+      if (isTurn && !this.prevTurn) {
+        this.beep(659.25, 0.09)
+        window.setTimeout(() => this.beep(880.0, 0.11), 95)
+      } else if (stage !== this.prevStage && ["flop", "turn", "river", "showdown"].includes(stage)) {
+        this.beep(440.0, 0.06)
+      }
+    }
+
+    this.prevTurn = isTurn
+    this.prevStage = stage
+  },
+
+  updateLabel() {
+    this.el.textContent = this.enabled ? "Sound: On" : "Sound: Off"
+    this.el.classList.toggle("active", this.enabled)
+  },
+
+  beep(freq, duration) {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext
+      if (!Ctx) { return }
+      this.ctx = this.ctx || new Ctx()
+      const osc = this.ctx.createOscillator()
+      const gain = this.ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.06, this.ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration)
+      osc.connect(gain)
+      gain.connect(this.ctx.destination)
+      osc.start()
+      osc.stop(this.ctx.currentTime + duration)
+    } catch (_e) {
+      // Ignore audio autoplay restrictions when not yet interacted
+    }
+  }
+}
+
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},

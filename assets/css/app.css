@@ -1529,3 +1529,316 @@ button.primary:hover:not(:disabled) {
     grid-template-columns: 44px 1fr 110px 80px 80px;
   }
 }
+
+/* --- Simulator HUD, Dealer Console, Currencies & Reactions --------------- */
+
+.currency-pill,
+.paused-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.currency-pill {
+  background: rgba(224, 176, 84, 0.16);
+  color: var(--gold);
+  border: 1px solid var(--gold-dim);
+  margin-left: 6px;
+}
+
+.paused-pill {
+  background: rgba(229, 97, 95, 0.18);
+  color: #ffb4b3;
+  border: 1px solid var(--red);
+}
+
+.table-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.table-header-actions form {
+  margin: 0;
+}
+
+.header-toggle {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.preset-strip {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.preset-strip button {
+  min-height: 36px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.lobby-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.lobby-toolbar .segmented {
+  margin-bottom: 0;
+}
+
+.lobby-search {
+  display: flex;
+  gap: 8px;
+}
+
+.lobby-search input {
+  flex: 1;
+  min-height: 40px;
+}
+
+.lobby-search button {
+  min-height: 40px;
+  flex: 0 0 auto;
+}
+
+.badge-host,
+.badge-bot {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.badge-host {
+  background: rgba(63, 191, 135, 0.2);
+  color: var(--green);
+  border: 1px solid rgba(63, 191, 135, 0.5);
+}
+
+.badge-bot {
+  background: rgba(152, 163, 184, 0.18);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.seat-reaction {
+  font-size: 10px;
+  color: var(--gold);
+  background: rgba(8, 9, 13, 0.9);
+  border: 1px solid var(--gold-dim);
+  border-radius: 999px;
+  padding: 1px 7px;
+  max-width: 96px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-hud {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.analytics-hud div {
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.analytics-hud .analytics-advice {
+  grid-column: 1 / -1;
+}
+
+.analytics-hud span {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.analytics-hud strong {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.reaction-bar {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 5px;
+}
+
+.reaction-bar button {
+  min-height: 36px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.show-cards-btn {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.dealer-console {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.dealer-banner {
+  background: var(--panel-2);
+  border: 1px solid var(--gold-dim);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dealer-banner strong {
+  font-size: 13px;
+  color: var(--gold);
+}
+
+.dealer-banner span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dealer-actions-row,
+.bot-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dealer-actions-row button,
+.bot-controls button {
+  flex: 1 1 auto;
+  min-height: 38px;
+  font-size: 12px;
+  padding: 0 10px;
+}
+
+.dealer-section {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dealer-section h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.dealer-seat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dealer-seat-item {
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dealer-seat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.dealer-seat-stack {
+  color: var(--gold);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.dealer-grant-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.dealer-grant-row button {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.danger-btn {
+  border-color: rgba(229, 97, 95, 0.45);
+  color: #ffb4b3;
+}
+
+.dealer-inline-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.dealer-inline-form select,
+.dealer-inline-form input,
+.dealer-inline-form button {
+  min-height: 38px;
+  font-size: 12px;
+}
+
+.dealer-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dealer-settings-form label {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.dealer-blinds-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.dealer-blinds-grid input {
+  min-height: 38px;
+  font-size: 13px;
+}

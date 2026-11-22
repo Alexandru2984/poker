@@ -43,8 +43,32 @@
       <% end %>
 
       <h2>Create Table</h2>
+      <div class="preset-strip" role="group" aria-label="Stakes presets">
+        <button type="button" phx-click="stake_preset" phx-value-preset="micro">
+          Micro 5/10
+        </button>
+        <button type="button" phx-click="stake_preset" phx-value-preset="low">
+          Low 10/25
+        </button>
+        <button type="button" phx-click="stake_preset" phx-value-preset="mid">
+          Mid 25/50
+        </button>
+        <button type="button" phx-click="stake_preset" phx-value-preset="high">
+          High 100/200
+        </button>
+      </div>
       <.form for={@room_form} phx-submit="create_room">
         <.input field={@room_form[:name]} label="Room name" value="Micu Table" />
+        <div>
+          <label for="room_currency">Fictional currency (play only)</label>
+          <select id="room_currency" name="room[currency]">
+            <%= for curr <- @currencies do %>
+              <option value={curr.code} selected={curr.code == @room_defaults.currency}>
+                {curr.code} — {curr.label}
+              </option>
+            <% end %>
+          </select>
+        </div>
         <.input
           type="number"
           field={@room_form[:max_players]}
@@ -91,56 +115,77 @@
     </aside>
 
     <section class="room-list">
-      <div class="segmented">
-        <button
-          phx-click="filter"
-          phx-value-filter="all"
-          class={if @filter == "all", do: "active"}
-        >
-          All
-        </button>
-        <button
-          phx-click="filter"
-          phx-value-filter="available"
-          class={if @filter == "available", do: "active"}
-        >
-          Seats
-        </button>
-        <button
-          phx-click="filter"
-          phx-value-filter="active"
-          class={if @filter == "active", do: "active"}
-        >
-          Active
-        </button>
-        <button
-          phx-click="filter"
-          phx-value-filter="waiting"
-          class={if @filter == "waiting", do: "active"}
-        >
-          Waiting
-        </button>
+      <div class="lobby-toolbar">
+        <div class="segmented">
+          <button
+            phx-click="filter"
+            phx-value-filter="all"
+            class={if @filter == "all", do: "active"}
+          >
+            All ({length(@rooms)})
+          </button>
+          <button
+            phx-click="filter"
+            phx-value-filter="available"
+            class={if @filter == "available", do: "active"}
+          >
+            Open Seats
+          </button>
+          <button
+            phx-click="filter"
+            phx-value-filter="active"
+            class={if @filter == "active", do: "active"}
+          >
+            Active
+          </button>
+          <button
+            phx-click="filter"
+            phx-value-filter="waiting"
+            class={if @filter == "waiting", do: "active"}
+          >
+            Waiting
+          </button>
+        </div>
+
+        <form id="lobby-search-form" phx-change="search" phx-submit="search" class="lobby-search">
+          <input
+            type="search"
+            name="q"
+            value={@search}
+            placeholder="Filter by table name or currency..."
+            aria-label="Filter tables"
+            autocomplete="off"
+          />
+          <button type="button" phx-click="refresh" title="Refresh table list">Refresh</button>
+        </form>
       </div>
 
+      <% visible_rooms = filtered_rooms(@rooms, @filter, @search) %>
       <div class="rooms-table">
         <div class="rooms-head">
-          <span>Room</span><span>Players</span><span>Blinds</span><span>Status</span><span></span>
+          <span>Room</span><span>Players</span><span>Stakes &amp; Currency</span><span>Status</span><span></span>
         </div>
-        <%= for room <- filtered_rooms(@rooms, @filter) do %>
+        <%= for room <- visible_rooms do %>
           <div class="rooms-row">
             <strong>
               {room.name}
+              <span class="currency-pill" title="Fictional currency">
+                {room.currency || "CHIPS"}
+              </span>
               <%= if MicuPoker.Rooms.protected?(room) do %>
                 <span class="lock-badge" title="Password protected">&#128274;</span>
               <% end %>
             </strong>
             <span>{room.player_count}/{room.max_players}</span>
-            <span>{room.small_blind}/{room.big_blind}</span>
+            <span>
+              {room.small_blind}/{room.big_blind} &middot; {room.starting_chips} {room.currency ||
+                "CHIPS"}
+            </span>
             <span class="status">{room.status}</span>
             <.link navigate={~p"/rooms/#{room.id}"}>Join</.link>
           </div>
         <% end %>
-        <%= if filtered_rooms(@rooms, @filter) == [] do %>
+        <%= if visible_rooms == [] do %>
           <div class="empty">No tables match this filter.</div>
         <% end %>
       </div>

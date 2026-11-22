@@ -7,14 +7,40 @@
         <p class="table-meta">
           <span>#{@room_id}</span>
           <span>{@table.room.small_blind}/{@table.room.big_blind}</span>
+          <span class="currency-pill">{@table.room.currency}</span>
           <span class="play-money">Play money</span>
+          <%= if @table.paused do %>
+            <span class="paused-pill">Paused by dealer</span>
+          <% end %>
         </p>
       </div>
     </div>
-    <form method="post" action={~p"/rooms/#{@room_id}/leave"}>
-      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
-      <button class="leave-button">Leave</button>
-    </form>
+    <div class="table-header-actions">
+      <button
+        type="button"
+        phx-click="toggle_bb_view"
+        class={["header-toggle", @bb_view && "active"]}
+        title="Toggle between fictional currency and Big Blinds (BB)"
+      >
+        {if @bb_view, do: "BB", else: @table.room.currency}
+      </button>
+      <button
+        type="button"
+        id="sound-toggle"
+        phx-hook="TableSound"
+        data-turn={to_string(my_turn?(@table, @current_user.id))}
+        data-stage={@table.stage}
+        data-hand={@table.hand_number}
+        class="header-toggle"
+        aria-label="Toggle table sound effects"
+      >
+        Sound
+      </button>
+      <form method="post" action={~p"/rooms/#{@room_id}/leave"}>
+        <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+        <button class="leave-button">Leave</button>
+      </form>
+    </div>
   </header>
 
   <div class="table-body">
@@ -22,8 +48,8 @@
       <div class={["felt", "seats-#{length(@seats)}"]}>
         <div class="felt-center">
           <div class="pot-display">
-            <span class="pot-label">Pot</span>
-            <strong class="pot-value">{@table.pot}</strong>
+            <span class="pot-label">Pot ({@table.room.currency})</span>
+            <strong class="pot-value">{format_chips(@table.pot, @table, @bb_view)}</strong>
           </div>
 
           <div class="board" aria-label="Community cards">
@@ -69,12 +95,14 @@
 
                 <div class="seat-info">
                   <span class="seat-name">{seat.player.username}</span>
-                  <span class="seat-stack">{seat.player.stack}</span>
+                  <span class="seat-stack">
+                    {format_chips(seat.player.stack, @table, @bb_view)}
+                  </span>
                 </div>
 
                 <div class="seat-badges">
                   <%= if @table.dealer_seat == seat.seat_number do %>
-                    <span class="badge-dealer" title="Dealer">D</span>
+                    <span class="badge-dealer" title="Button">D</span>
                   <% end %>
                   <%= if @table.small_blind_seat == seat.seat_number do %>
                     <span class="badge-blind">SB</span>
@@ -82,7 +110,17 @@
                   <%= if @table.big_blind_seat == seat.seat_number do %>
                     <span class="badge-blind">BB</span>
                   <% end %>
+                  <%= if Map.get(seat.player, :is_dealer) do %>
+                    <span class="badge-host" title="Table Dealer / Host">HOST</span>
+                  <% end %>
+                  <%= if Map.get(seat.player, :is_bot) do %>
+                    <span class="badge-bot" title="Practice AI Bot">BOT</span>
+                  <% end %>
                 </div>
+
+                <%= if Map.get(seat.player, :reaction) do %>
+                  <span class="seat-reaction">{seat.player.reaction.label}</span>
+                <% end %>
 
                 <%= if seat_state(seat.player) do %>
                   <span class="seat-state">{seat_state(seat.player)}</span>
@@ -94,7 +132,7 @@
               </div>
 
               <%= if seat.player.bet > 0 do %>
-                <span class="seat-bet">{seat.player.bet}</span>
+                <span class="seat-bet">{format_chips(seat.player.bet, @table, @bb_view)}</span>
               <% end %>
             <% else %>
               <div class="seat-card empty-seat">
@@ -166,16 +204,75 @@
             <% end %>
         <% end %>
 
-        <%= if hero && hero.stack > 0 && !hero.sitting_out do %>
-          <div class="hero-controls">
-            <button phx-click="seat" phx-value-seat="sit_out">Sit out next hand</button>
+        <%= if @table.analytics && hero && hero.cards != [] do %>
+          <div class="analytics-hud" aria-label="Poker simulator analytics">
+            <div>
+              <span>Est. Equity</span>
+              <strong>{@table.analytics.equity}% &middot; {@table.analytics.tier}</strong>
+            </div>
+            <div>
+              <span>Pot Odds</span>
+              <strong>
+                {@table.analytics.pot_odds.percent}% ({@table.analytics.pot_odds.ratio})
+              </strong>
+            </div>
+            <div>
+              <span>Stack Depth</span>
+              <strong>
+                {@table.analytics.stack_bb} BB
+                <%= if @table.analytics.spr do %>
+                  &middot; SPR {@table.analytics.spr}
+                <% end %>
+              </strong>
+            </div>
+            <div class="analytics-advice">
+              <span>Simulator Read</span>
+              <strong>{@table.analytics.advice} ({@table.analytics.outs_detail})</strong>
+            </div>
           </div>
         <% end %>
+
+        <%= if hero && hero.connected do %>
+          <div class="reaction-bar" role="group" aria-label="Quick table reactions">
+            <button type="button" phx-click="react" phx-value-code="nh" title="Nice hand">
+              &#128079; NH
+            </button>
+            <button type="button" phx-click="react" phx-value-code="gg" title="Good game">
+              &#129309; GG
+            </button>
+            <button type="button" phx-click="react" phx-value-code="wp" title="Well played">
+              &#128293; WP
+            </button>
+            <button type="button" phx-click="react" phx-value-code="gl" title="Good luck">
+              &#127808; GL
+            </button>
+            <button type="button" phx-click="react" phx-value-code="oof" title="Tough beat">
+              &#128556; OOF
+            </button>
+            <button type="button" phx-click="react" phx-value-code="think" title="Thinking">
+              &#129300;
+            </button>
+          </div>
+        <% end %>
+
+        <div class="hero-controls">
+          <%= if can_show_cards?(hero, @table) do %>
+            <button type="button" phx-click="show_cards" class="show-cards-btn">
+              Show My Cards to Table
+            </button>
+          <% end %>
+          <%= if hero && hero.stack > 0 && !hero.sitting_out do %>
+            <button type="button" phx-click="seat" phx-value-seat="sit_out">
+              Sit out next hand
+            </button>
+          <% end %>
+        </div>
       </section>
 
       <nav class="panel-tabs" role="tablist">
         <%= for {value, label} <- [
               {"chat", "Chat"},
+              {"dealer", if(@table.is_dealer, do: "★ Dealer", else: "Dealer")},
               {"log", "Log"},
               {"hands", "Hands"},
               {"info", "Table"}
@@ -230,7 +327,7 @@
                 <article>
                   <header>
                     <span class="hand-number">Hand #{hand.hand_number}</span>
-                    <span class="hand-pot">{hand.pot_total}</span>
+                    <span class="hand-pot">{hand.pot_total} {@table.room.currency}</span>
                   </header>
                   <%= if hand.board != [] do %>
                     <p class="hand-board">{Enum.join(hand.board, " ")}</p>
@@ -238,7 +335,7 @@
                   <%= for winner <- hand.winners do %>
                     <p class="hand-winner">
                       <strong>{winner["username"]}</strong>
-                      won {winner["amount"]} with {winner["hand"]}
+                      won {winner["amount"]} {@table.room.currency} with {winner["hand"]}
                     </p>
                   <% end %>
                 </article>
@@ -247,13 +344,239 @@
                 <p class="muted-note">No finished hands at this table yet.</p>
               <% end %>
             </div>
+          <% "dealer" -> %>
+            <div class="dealer-console">
+              <p class="dealer-banner">
+                <strong>Fictional Currency Controller ({@table.room.currency})</strong>
+                <span>100% play-money simulator. No real money, cards or payments.</span>
+              </p>
+
+              <%= if @table.is_dealer do %>
+                <div class="dealer-actions-row">
+                  <button type="button" phx-click="dealer_toggle_pause">
+                    {if @table.paused, do: "▶ Resume Dealing", else: "⏸ Pause After Hand"}
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="dealer_reset_stacks"
+                    disabled={@table.stage not in [:waiting, :complete, :showdown]}
+                  >
+                    Reset All Stacks ({@table.room.starting_chips})
+                  </button>
+                </div>
+
+                <div class="dealer-section">
+                  <h3>Practice AI Bots</h3>
+                  <div class="bot-controls">
+                    <button
+                      type="button"
+                      phx-click="dealer_add_bot"
+                      phx-value-profile="tag"
+                      title="Tight-Aggressive Bot"
+                    >
+                      + TAG Bot
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="dealer_add_bot"
+                      phx-value-profile="lag"
+                      title="Loose-Aggressive Bot"
+                    >
+                      + LAG Bot
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="dealer_add_bot"
+                      phx-value-profile="balanced"
+                      title="Balanced GTO Bot"
+                    >
+                      + GTO Bot
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="dealer_add_bot"
+                      phx-value-profile="station"
+                      title="Calling Station Bot"
+                    >
+                      + Call Bot
+                    </button>
+                    <%= if Enum.any?(@table.players, &Map.get(&1, :is_bot, false)) do %>
+                      <button type="button" phx-click="dealer_remove_bots" class="danger-btn">
+                        Remove Bots
+                      </button>
+                    <% end %>
+                  </div>
+                </div>
+
+                <div class="dealer-section">
+                  <h3>Seated Players &amp; Fictional Balances</h3>
+                  <div class="dealer-seat-list">
+                    <%= for player <- @table.players do %>
+                      <div class="dealer-seat-item">
+                        <div class="dealer-seat-head">
+                          <strong>
+                            S{player.seat_number} &middot; {player.username}
+                            <%= if Map.get(player, :is_dealer) do %>
+                              <span class="badge">HOST</span>
+                            <% end %>
+                          </strong>
+                          <span class="dealer-seat-stack">
+                            {player.stack} {@table.room.currency}
+                          </span>
+                        </div>
+                        <div class="dealer-grant-row">
+                          <button
+                            type="button"
+                            phx-click="dealer_grant"
+                            phx-value-seat={player.seat_number}
+                            phx-value-amount="500"
+                          >
+                            +500
+                          </button>
+                          <button
+                            type="button"
+                            phx-click="dealer_grant"
+                            phx-value-seat={player.seat_number}
+                            phx-value-amount="1000"
+                          >
+                            +1k
+                          </button>
+                          <button
+                            type="button"
+                            phx-click="dealer_grant"
+                            phx-value-seat={player.seat_number}
+                            phx-value-amount="5000"
+                          >
+                            +5k
+                          </button>
+                          <%= if not Map.get(player, :is_dealer, false) and not Map.get(player, :is_bot, false) do %>
+                            <button
+                              type="button"
+                              phx-click="dealer_transfer"
+                              phx-value-seat={player.seat_number}
+                              title="Transfer Dealer Role"
+                            >
+                              Make Host
+                            </button>
+                          <% end %>
+                          <%= if not Map.get(player, :is_me, false) do %>
+                            <button
+                              type="button"
+                              phx-click="dealer_kick_seat"
+                              phx-value-seat={player.seat_number}
+                              class="danger-btn"
+                            >
+                              Kick
+                            </button>
+                          <% end %>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+
+                  <form phx-submit="dealer_set_stack" class="dealer-inline-form">
+                    <select name="dealer[seat]" aria-label="Target seat">
+                      <%= for player <- @table.players do %>
+                        <option value={player.seat_number}>
+                          Seat {player.seat_number} ({player.username})
+                        </option>
+                      <% end %>
+                    </select>
+                    <input
+                      type="number"
+                      name="dealer[stack]"
+                      min="0"
+                      max="500000"
+                      value={@table.room.starting_chips}
+                      placeholder="Set exact stack"
+                      aria-label="Exact fictional stack"
+                    />
+                    <button type="submit">Set Stack</button>
+                  </form>
+                </div>
+
+                <div class="dealer-section">
+                  <h3>Change Fictional Currency &amp; Blinds (Between Hands)</h3>
+                  <form phx-submit="dealer_update_table" class="dealer-settings-form">
+                    <label for="dealer_currency">Currency</label>
+                    <select id="dealer_currency" name="table_settings[currency]">
+                      <%= for curr <- @currencies do %>
+                        <option value={curr.code} selected={curr.code == @table.room.currency}>
+                          {curr.code} — {curr.label}
+                        </option>
+                      <% end %>
+                    </select>
+                    <div class="dealer-blinds-grid">
+                      <div>
+                        <label for="dealer_sb">Small Blind</label>
+                        <input
+                          id="dealer_sb"
+                          type="number"
+                          name="table_settings[small_blind]"
+                          min="1"
+                          max="1000"
+                          value={@table.room.small_blind}
+                        />
+                      </div>
+                      <div>
+                        <label for="dealer_bb">Big Blind</label>
+                        <input
+                          id="dealer_bb"
+                          type="number"
+                          name="table_settings[big_blind]"
+                          min="2"
+                          max="2000"
+                          value={@table.room.big_blind}
+                        />
+                      </div>
+                      <div>
+                        <label for="dealer_buyin">Buy-in</label>
+                        <input
+                          id="dealer_buyin"
+                          type="number"
+                          name="table_settings[starting_chips]"
+                          min="100"
+                          max="100000"
+                          value={@table.room.starting_chips}
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={@table.stage not in [:waiting, :complete, :showdown]}
+                    >
+                      Save Table Settings
+                    </button>
+                  </form>
+                </div>
+              <% else %>
+                <div class="table-info">
+                  <dl>
+                    <dt>Table Dealer / Host</dt>
+                    <dd>{dealer_name(@table)}</dd>
+                    <dt>Fictional Currency</dt>
+                    <dd>{@table.room.currency} ({@table.room.currency_info.label})</dd>
+                    <dt>Dealing Status</dt>
+                    <dd>{if @table.paused, do: "Paused", else: "Active"}</dd>
+                  </dl>
+                  <p class="muted-note">
+                    Only the table host/dealer ({dealer_name(@table)}) can grant fictional funds,
+                    spawn practice bots, or adjust blinds and currency at this table.
+                  </p>
+                </div>
+              <% end %>
+            </div>
           <% _info -> %>
             <div class="table-info">
               <dl>
+                <dt>Currency</dt>
+                <dd>{@table.room.currency} (Play Money)</dd>
+                <dt>Dealer / Host</dt>
+                <dd>{dealer_name(@table)}</dd>
                 <dt>Blinds</dt>
                 <dd>{@table.room.small_blind} / {@table.room.big_blind}</dd>
                 <dt>Buy-in</dt>
-                <dd>{@table.room.starting_chips}</dd>
+                <dd>{@table.room.starting_chips} {@table.room.currency}</dd>
                 <dt>Seats</dt>
                 <dd>{length(@table.players)} / {@table.room.max_players}</dd>
                 <dt>Hand</dt>

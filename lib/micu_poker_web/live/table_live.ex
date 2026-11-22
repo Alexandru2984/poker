@@ -90,6 +90,8 @@ defmodule MicuPokerWeb.TableLive do
      |> assign(:invite_url, MicuPokerWeb.Endpoint.url() <> ~p"/rooms/#{room.id}")
      |> assign(:now, DateTime.utc_now(:second))
      |> assign(:panel, "chat")
+     |> assign(:bb_view, false)
+     |> assign(:currencies, MicuPoker.Rooms.Room.currencies())
      |> assign(:recent_hands, [])
      |> assign(:chat_message, "")
      |> put_table(table)}
@@ -144,6 +146,10 @@ defmodule MicuPokerWeb.TableLive do
   end
 
   def handle_event("panel", _params, socket), do: {:noreply, socket}
+
+  def handle_event("toggle_bb_view", _params, socket) do
+    {:noreply, assign(socket, :bb_view, not socket.assigns.bb_view)}
+  end
 
   def handle_event("dealer_grant", %{"seat" => seat, "amount" => amount}, socket) do
     room_id = socket.assigns.room_id
@@ -427,6 +433,27 @@ defmodule MicuPokerWeb.TableLive do
   defp stage_label(:waiting), do: "Waiting"
   defp stage_label(:complete), do: "Hand over"
   defp stage_label(stage), do: stage |> to_string() |> String.capitalize()
+
+  defp format_chips(amount, %{room: %{big_blind: bb}}, true)
+       when is_integer(amount) and is_integer(bb) and bb > 0 do
+    "#{Float.round(amount / bb * 1.0, 1)} BB"
+  end
+
+  defp format_chips(amount, _table, _bb_view), do: to_string(amount)
+
+  defp dealer_name(table) do
+    case Enum.find(table.players, &Map.get(&1, :is_dealer, false)) do
+      nil -> "Table creator"
+      player -> "#{player.username} (Seat #{player.seat_number})"
+    end
+  end
+
+  defp can_show_cards?(nil, _table), do: false
+
+  defp can_show_cards?(hero, table) do
+    length(hero.cards) == 2 and not Map.get(hero, :revealed_cards, false) and
+      (table.stage in [:complete, :showdown] or hero.folded)
+  end
 
   # Drives the shrinking ring around the seat that is on the clock.
   defp timer_style(table, now) do

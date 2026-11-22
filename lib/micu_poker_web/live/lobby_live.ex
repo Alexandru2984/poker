@@ -4,18 +4,30 @@ defmodule MicuPokerWeb.LobbyLive do
   alias MicuPoker.Accounts
   alias MicuPoker.RateLimiter
   alias MicuPoker.Rooms
+  alias MicuPoker.Rooms.Room
 
   @room_create_limit 10
   @rename_limit 10
   @rate_window_ms 60_000
 
+  @stake_presets %{
+    "micro" => %{small_blind: 5, big_blind: 10, starting_chips: 1000},
+    "low" => %{small_blind: 10, big_blind: 25, starting_chips: 2500},
+    "mid" => %{small_blind: 25, big_blind: 50, starting_chips: 5000},
+    "high" => %{small_blind: 100, big_blind: 200, starting_chips: 20000}
+  }
+
   @impl true
   def mount(_params, _session, socket) do
+    defaults = Rooms.room_defaults()
+
     {:ok,
      socket
      |> assign(:page_title, "MicuPoker Lobby")
      |> assign(:filter, "all")
-     |> assign(:room_defaults, Rooms.room_defaults())
+     |> assign(:search, "")
+     |> assign(:currencies, Room.currencies())
+     |> assign(:room_defaults, defaults)
      |> assign(:rooms, Rooms.list_rooms())
      |> assign(:room_form, to_form(%{}, as: :room))
      |> assign(
@@ -27,6 +39,25 @@ defmodule MicuPokerWeb.LobbyLive do
   @impl true
   def handle_event("filter", %{"filter" => filter}, socket) do
     {:noreply, assign(socket, :filter, filter)}
+  end
+
+  def handle_event("search", %{"q" => query}, socket) do
+    {:noreply, assign(socket, :search, String.trim(to_string(query)))}
+  end
+
+  def handle_event("refresh", _params, socket) do
+    {:noreply, assign(socket, :rooms, Rooms.list_rooms())}
+  end
+
+  def handle_event("stake_preset", %{"preset" => preset}, socket) do
+    case Map.get(@stake_presets, preset) do
+      nil ->
+        {:noreply, socket}
+
+      stakes ->
+        defaults = Map.merge(socket.assigns.room_defaults, stakes)
+        {:noreply, assign(socket, :room_defaults, defaults)}
+    end
   end
 
   def handle_event("rename", %{"user" => %{"username" => username}}, socket) do
@@ -89,10 +120,27 @@ defmodule MicuPokerWeb.LobbyLive do
     |> Kernel.||("invalid values")
   end
 
-  defp filtered_rooms(rooms, "available"),
+  defp filtered_rooms(rooms, filter, search) do
+    rooms
+    |> filter_by_status(filter)
+    |> filter_by_search(search)
+  end
+
+  defp filter_by_status(rooms, "available"),
     do: Enum.filter(rooms, &(&1.player_count < &1.max_players))
 
-  defp filtered_rooms(rooms, "active"), do: Enum.filter(rooms, &(&1.status == "active"))
-  defp filtered_rooms(rooms, "waiting"), do: Enum.filter(rooms, &(&1.status == "waiting"))
-  defp filtered_rooms(rooms, _), do: rooms
+  defp filter_by_status(rooms, "active"), do: Enum.filter(rooms, &(&1.status == "active"))
+  defp filter_by_status(rooms, "waiting"), do: Enum.filter(rooms, &(&1.status == "waiting"))
+  defp filter_by_status(rooms, _), do: rooms
+
+  defp filter_by_search(rooms, ""), do: rooms
+
+  defp filter_by_search(rooms, query) when is_binary(query) do
+    down = String.downcase(query)
+
+    Enum.filter(rooms, fn room ->
+      String.contains?(String.downcase(room.name), down) or
+        String.contains?(String.downcase(room.currency || "chips"), down)
+    end)
+  end
 end

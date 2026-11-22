@@ -200,4 +200,43 @@ defmodule MicuPokerWeb.TableLiveTest do
 
     assert flash["error"] == "Table is full and spectators are disabled."
   end
+
+  test "table dealer console allows managing fictional balances, currency, and practice bots", %{
+    conn: conn
+  } do
+    {:ok, host} = Accounts.create_guest_user()
+
+    {:ok, room} =
+      Rooms.create_room(
+        %{
+          "name" => "Dealer Console Room",
+          "max_players" => "4",
+          "small_blind" => "5",
+          "big_blind" => "10",
+          "starting_chips" => "1000",
+          "currency" => "FIC-RON"
+        },
+        host.id
+      )
+
+    conn = Plug.Test.init_test_session(conn, guest_user_id: host.id)
+    {:ok, view, html} = live(conn, ~p"/rooms/#{room.id}")
+
+    assert html =~ "FIC-RON"
+    assert html =~ "★ Dealer"
+
+    dealer_html = render_click(view, :panel, %{"panel" => "dealer"})
+    assert dealer_html =~ "Fictional Currency Controller (FIC-RON)"
+    assert dealer_html =~ "Practice AI Bots"
+
+    # Grant +1000 fictional FIC-RON to seat 1
+    granted_html =
+      render_click(view, :dealer_grant, %{"seat" => "1", "amount" => "1000"})
+
+    assert granted_html =~ "2000"
+
+    # Toggle BB view
+    bb_html = render_click(view, :toggle_bb_view, %{})
+    assert bb_html =~ "200.0 BB"
+  end
 end

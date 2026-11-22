@@ -91,6 +91,41 @@ defmodule MicuPokerWeb.LobbyLiveTest do
            end)
   end
 
+  test "lobby supports fictional currency selector, stake presets, and table search", %{
+    conn: conn
+  } do
+    {:ok, user} = Accounts.create_guest_user()
+
+    {:ok, _ron_room} =
+      MicuPoker.Rooms.create_room(
+        %{"name" => "Bucharest Lounge", "currency" => "FIC-RON"},
+        user.id
+      )
+
+    {:ok, _gold_room} =
+      MicuPoker.Rooms.create_room(
+        %{"name" => "Royal Vault", "currency" => "GOLD"},
+        user.id
+      )
+
+    conn = Plug.Test.init_test_session(conn, guest_user_id: user.id)
+    {:ok, view, html} = live(conn, ~p"/lobby")
+
+    assert html =~ "Fictional currency (play only)"
+    assert html =~ "FIC-RON"
+    assert html =~ "Bucharest Lounge"
+    assert html =~ "Royal Vault"
+
+    # Search by currency code
+    filtered = render_change(view, :search, %{"q" => "FIC-RON"})
+    assert filtered =~ "Bucharest Lounge"
+    refute filtered =~ "Royal Vault"
+
+    # Stake preset updates form values
+    preset_html = render_click(view, :stake_preset, %{"preset" => "high"})
+    assert preset_html =~ ~s(value="20000")
+  end
+
   defp with_env(values) do
     previous = Map.new(values, fn {key, _value} -> {key, System.get_env(key)} end)
 

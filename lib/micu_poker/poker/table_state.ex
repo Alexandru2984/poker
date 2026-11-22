@@ -64,8 +64,16 @@ defmodule MicuPoker.Poker.TableState do
         (state.stage == :showdown and player.in_hand and not player.folded) or
         (state.stage == :waiting and player.cards == [])
 
+    win_info =
+      if state.stage in [:showdown, :complete] do
+        state
+        |> Map.get(:last_winners, %{})
+        |> Map.get(player.user_id)
+      end
+
     player
     |> public_player_fields(show_cards?, state.board)
+    |> Map.put(:win_info, win_info)
     |> maybe_put_user_id(player.user_id, is_me?)
     |> Map.put(:is_me, is_me?)
     |> Map.put(:is_dealer, Rooms.dealer?(state.room, player.user_id))

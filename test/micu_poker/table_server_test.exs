@@ -820,6 +820,32 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert hand_state.pot == room.small_blind + room.big_blind + 4
   end
 
+  test "finished hands populate win_info on the winning seat and dealer can deal next hand immediately",
+       %{
+         room: room,
+         user_one: user_one,
+         user_two: user_two
+       } do
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, _} = join_connected(room, user_two)
+
+    folder_id = acting_user_id(room, [user_one, user_two])
+    winner_id = Enum.find([user_one.id, user_two.id], &(&1 != folder_id))
+
+    assert :ok = TableServer.act(room.id, folder_id, "fold", 0)
+
+    complete_state = TableServer.state(room.id, winner_id)
+    assert complete_state.stage == :complete
+    assert own_player(complete_state).win_info.amount == room.small_blind * 2
+    assert own_player(complete_state).win_info.hand == "Uncontested"
+
+    # Dealer triggers next hand immediately without waiting for timer
+    assert {:ok, next_hand_state} = TableServer.dealer_deal_now(room.id, user_one.id)
+    assert next_hand_state.stage == :preflop
+    assert next_hand_state.hand_number == 2
+    assert own_player(next_hand_state).win_info == nil
+  end
+
   defp create_test_room(user, name, spectator_enabled) do
     Rooms.create_room(
       %{

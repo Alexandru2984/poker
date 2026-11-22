@@ -121,7 +121,7 @@ defmodule MicuPokerWeb.TableChannel do
   end
 
   def handle_in("dealer", %{"command" => command} = payload, socket)
-      when command in ~w(grant_chips set_stack reset_stacks update_table toggle_pause transfer kick_seat add_bot remove_bots set_ante set_blind_timer) do
+      when command in ~w(grant_chips set_stack reset_stacks update_table toggle_pause transfer kick_seat add_bot remove_bots set_ante set_blind_timer deal_now) do
     room_id = socket.assigns.room_id
     user_id = socket.assigns.user_id
 
@@ -169,6 +169,9 @@ defmodule MicuPokerWeb.TableChannel do
 
         "set_blind_timer" ->
           TableServer.dealer_set_blind_timer(room_id, user_id, Map.get(payload, "minutes", 0))
+
+        "deal_now" ->
+          TableServer.dealer_deal_now(room_id, user_id)
       end
 
     case reply do

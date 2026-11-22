@@ -1928,3 +1928,47 @@ button.primary:hover:not(:disabled) {
   font-size: 12px;
   padding: 0 8px;
 }
+
+.seat.winner .seat-card {
+  border-color: var(--gold);
+  box-shadow: 0 0 18px rgba(224, 176, 84, 0.45);
+  background: rgba(24, 19, 8, 0.94);
+}
+
+.seat-winner-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #14161c;
+  background: var(--gold);
+  border-radius: 999px;
+  padding: 1px 7px;
+  max-width: 112px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seat-hand-rank {
+  font-size: 9px;
+  color: var(--gold);
+  background: rgba(224, 176, 84, 0.14);
+  border: 1px solid var(--gold-dim);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.bet-row {
+  grid-template-columns: 1fr 88px auto;
+}
+
+.bet-number-input {
+  min-height: 36px;
+  padding: 4px 8px;
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.preset-row {
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+}

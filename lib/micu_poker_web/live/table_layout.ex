@@ -85,6 +85,7 @@ defmodule MicuPokerWeb.TableLayout do
       pot = table.pot + Enum.sum(Enum.map(table.players, & &1.bet))
 
       [
+        {"Min", minimum},
         {"½ pot", div(pot, 2)},
         {"¾ pot", div(pot * 3, 4)},
         {"Pot", pot},

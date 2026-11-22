@@ -287,6 +287,19 @@ defmodule MicuPokerWeb.TableLive do
     end
   end
 
+  def handle_event("dealer_deal_now", _params, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_deal_now(room_id, user_id) do
+      {:ok, table} ->
+        {:noreply, put_table(socket, table)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
   def handle_event("time_bank", _params, socket) do
     room_id = socket.assigns.room_id
     user_id = socket.assigns.current_user.id
@@ -603,6 +616,7 @@ defmodule MicuPokerWeb.TableLive do
       seat.hero? && "hero",
       is_nil(seat.player) && "vacant",
       table.turn_seat == seat.seat_number && "acting",
+      seat.player && Map.get(seat.player, :win_info) && "winner",
       seat.player && seat.player.folded && "folded",
       seat.player && seat.player.all_in && "all-in",
       seat.player && not seat.player.connected && "away"

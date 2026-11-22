@@ -85,6 +85,9 @@ defmodule MicuPoker.Poker.TableServer do
   def dealer_set_blind_timer(room_id, dealer_id, minutes),
     do: call(room_id, {:dealer_set_blind_timer, dealer_id, minutes})
 
+  def dealer_deal_now(room_id, dealer_id),
+    do: call(room_id, {:dealer_deal_now, dealer_id})
+
   def show_cards(room_id, user_id),
     do: call(room_id, {:show_cards, user_id})
 
@@ -142,6 +145,7 @@ defmodule MicuPoker.Poker.TableServer do
       blind_level: 1,
       blind_interval_minutes: 0,
       next_blind_level_at: nil,
+      last_winners: %{},
       hand_number: 0,
       hand: nil,
       current_bet: 0,
@@ -583,6 +587,24 @@ defmodule MicuPoker.Poker.TableServer do
       {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
     else
       false -> {:reply, {:error, :invalid_blind_timer}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_deal_now, dealer_id}, _from, state) do
+    with :ok <- authorize_dealer(state, dealer_id),
+         :ok <- ensure_between_hands(state) do
+      new_state =
+        state
+        |> Map.put(:paused, false)
+        |> cancel_next_hand()
+        |> auto_rebuy_bots()
+        |> maybe_start_hand()
+        |> sync_room_status()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
@@ -1112,11 +1134,21 @@ defmodule MicuPoker.Poker.TableServer do
       end)
       |> Enum.join(", ")
 
+    last_winners =
+      settlement.awards
+      |> Enum.group_by(& &1.user_id)
+      |> Map.new(fn {uid, entries} ->
+        total = Enum.sum(Enum.map(entries, & &1.amount))
+        first = hd(entries)
+        {uid, %{amount: total, hand: MicuPoker.Poker.HandSummary.human_rank(first.eval.name)}}
+      end)
+
     state =
       %{
         state
         | players: settlement.players,
           stage: :showdown,
+          last_winners: last_winners,
           pot: 0,
           current_bet: 0,
           turn_seat: nil,
@@ -1139,6 +1171,7 @@ defmodule MicuPoker.Poker.TableServer do
       |> reset_contributions()
       |> Map.merge(%{
         stage: :complete,
+        last_winners: %{winner.user_id => %{amount: state.pot, hand: "Uncontested"}},
         pot: 0,
         current_bet: 0,
         turn_seat: nil,
@@ -1286,6 +1319,7 @@ defmodule MicuPoker.Poker.TableServer do
           board: [],
           pot: 0,
           stage: :preflop,
+          last_winners: %{},
           hand_number: state.hand_number + 1,
           hand: hand,
           dealer_seat: dealer.seat_number,

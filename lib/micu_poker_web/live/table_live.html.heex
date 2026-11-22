@@ -128,6 +128,16 @@
                   <% end %>
                 </div>
 
+                <%= if Map.get(seat.player, :win_info) do %>
+                  <span class="seat-winner-badge">
+                    &#9733; +{format_chips(seat.player.win_info.amount, @table, @bb_view)} &middot; {seat.player.win_info.hand}
+                  </span>
+                <% else %>
+                  <%= if @table.stage == :showdown and seat.player.hand_summary do %>
+                    <span class="seat-hand-rank">{seat.player.hand_summary.title}</span>
+                  <% end %>
+                <% end %>
+
                 <%= if Map.get(seat.player, :reaction) do %>
                   <span class="seat-reaction">{seat.player.reaction.label}</span>
                 <% end %>
@@ -411,6 +421,14 @@
 
               <%= if @table.is_dealer do %>
                 <div class="dealer-actions-row">
+                  <button
+                    type="button"
+                    phx-click="dealer_deal_now"
+                    disabled={@table.stage not in [:waiting, :complete, :showdown]}
+                    title="Deal the next hand immediately"
+                  >
+                    &#9889; Deal Next Hand
+                  </button>
                   <button type="button" phx-click="dealer_toggle_pause">
                     {if @table.paused, do: "▶ Resume Dealing", else: "⏸ Pause After Hand"}
                   </button>
@@ -703,12 +721,11 @@
         <p class="action-note">A short all-in cannot be re-raised. Call or fold.</p>
       <% end %>
 
-      <div class="bet-row">
+      <form id="bet-sizing-form" phx-change="bet_amount" phx-submit="bet_amount" class="bet-row">
         <input
           type="range"
           id="bet-slider"
           name="amount"
-          phx-change="bet_amount"
           phx-debounce="80"
           value={@bet_amount}
           min={@table.valid_actions[:min_raise_to] || @table.valid_actions[:min_bet] || 1}
@@ -717,8 +734,21 @@
           disabled={not sizing_available?(@table)}
           aria-label="Bet amount"
         />
-        <output class="bet-amount">{@bet_amount}</output>
-      </div>
+        <input
+          type="number"
+          id="bet-number-input"
+          name="amount"
+          phx-debounce="150"
+          value={@bet_amount}
+          min={@table.valid_actions[:min_raise_to] || @table.valid_actions[:min_bet] || 1}
+          max={@table.valid_actions[:max_total_bet] || 1}
+          step={@table.room.small_blind}
+          disabled={not sizing_available?(@table)}
+          class="bet-number-input"
+          aria-label="Exact bet amount"
+        />
+        <output class="bet-amount">{format_chips(@bet_amount, @table, @bb_view)}</output>
+      </form>
 
       <div class="preset-row">
         <%= for {label, amount} <- @bet_presets do %>

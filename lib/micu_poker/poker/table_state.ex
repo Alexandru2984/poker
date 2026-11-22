@@ -1,11 +1,13 @@
 defmodule MicuPoker.Poker.TableState do
   @moduledoc false
 
-  alias MicuPoker.Poker.{Card, HandSummary}
+  alias MicuPoker.Poker.{Analytics, Card, HandSummary}
   alias MicuPoker.Rooms
   alias MicuPoker.Rooms.Room
 
   def sanitize(state, viewer_id \\ nil) do
+    valid_actions = valid_actions_for_viewer(state, viewer_id)
+
     %{
       room: room_public(state.room),
       stage: state.stage,
@@ -25,7 +27,8 @@ defmodule MicuPoker.Poker.TableState do
       players: Enum.map(state.players, &player_public(&1, state, viewer_id)),
       log: Enum.take(state.log, 80),
       chat: Enum.take(state.chat, 40),
-      valid_actions: valid_actions_for_viewer(state, viewer_id),
+      valid_actions: valid_actions,
+      analytics: analytics_for_viewer(state, viewer_id, valid_actions),
       play_money_only: true,
       side_pots_supported: true
     }
@@ -75,6 +78,10 @@ defmodule MicuPoker.Poker.TableState do
       in_hand: player.in_hand,
       connected: player.connected,
       sitting_out: Map.get(player, :sitting_out, false),
+      is_bot: Map.get(player, :is_bot, false),
+      bot_profile: Map.get(player, :bot_profile, nil),
+      revealed_cards: Map.get(player, :revealed_cards, false),
+      reaction: Map.get(player, :reaction, nil),
       disconnect_deadline: player.disconnect_deadline,
       hand_summary: if(show_cards?, do: HandSummary.summarize(player.cards, board), else: nil),
       cards: public_cards(player.cards, show_cards?)
@@ -93,6 +100,28 @@ defmodule MicuPoker.Poker.TableState do
     case Enum.find(state.players, &(&1.user_id == viewer_id)) do
       nil -> %{actions: []}
       player -> state.valid_actions_fun.(state, player)
+    end
+  end
+
+  defp analytics_for_viewer(_state, nil, _valid_actions), do: nil
+
+  defp analytics_for_viewer(state, viewer_id, valid_actions) do
+    case Enum.find(state.players, &(&1.user_id == viewer_id)) do
+      nil ->
+        nil
+
+      player ->
+        call_amount =
+          Map.get(valid_actions, :call_amount, max(state.current_bet - player.bet, 0))
+
+        Analytics.evaluate_spot(
+          player.cards,
+          state.board,
+          state.pot,
+          call_amount,
+          player.stack,
+          state.room.big_blind
+        )
     end
   end
 end

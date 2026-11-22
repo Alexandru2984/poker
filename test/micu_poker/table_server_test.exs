@@ -693,6 +693,67 @@ defmodule MicuPoker.Poker.TableServerTest do
              TableServer.dealer_grant_chips(room.id, user_two.id, 1, 500)
   end
 
+  test "player can voluntarily show hole cards after an uncontested pot or fold and send table reactions",
+       %{
+         room: room,
+         user_one: user_one,
+         user_two: user_two
+       } do
+    with_env("CHAT_RATE_LIMIT_MS", "0")
+
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, state_two} = join_connected(room, user_two)
+
+    # Analytics HUD is populated for seated players with cards.
+    assert is_map(state_two.analytics)
+    assert state_two.analytics.stack_bb > 0
+    assert is_binary(state_two.analytics.tier)
+
+    # Send a quick reaction
+    assert {:ok, reacted} = TableServer.react(room.id, user_one.id, "gl")
+    assert own_player(reacted).reaction.code == "gl"
+
+    acting_user_id = acting_user_id(room, [user_one, user_two])
+    other_user_id = Enum.find([user_one.id, user_two.id], &(&1 != acting_user_id))
+
+    assert :ok = TableServer.act(room.id, acting_user_id, "fold", 0)
+
+    # Before showing cards, opponent sees hidden cards.
+    opponent_view_before = TableServer.state(room.id, other_user_id)
+    folded_before = Enum.find(opponent_view_before.players, &(&1.is_me == false))
+    assert Enum.all?(folded_before.cards, &(&1 == %{hidden: true}))
+
+    # Folded player voluntarily clicks "Show cards"
+    assert {:ok, _} = TableServer.show_cards(room.id, acting_user_id)
+
+    opponent_view_after = TableServer.state(room.id, other_user_id)
+    folded_after = Enum.find(opponent_view_after.players, &(&1.is_me == false))
+    assert folded_after.revealed_cards == true
+    assert Enum.all?(folded_after.cards, &Map.has_key?(&1, :label))
+  end
+
+  test "dealer can add and remove practice AI bots that act automatically", %{
+    room: room,
+    user_one: user_one
+  } do
+    with_env("BOT_TURN_DELAY_MS", "15")
+
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, with_bot} = TableServer.dealer_add_bot(room.id, user_one.id, "tag")
+
+    assert length(with_bot.players) == 2
+    assert Enum.any?(with_bot.players, &(&1.is_bot == true and &1.bot_profile == "tag"))
+    assert with_bot.stage == :preflop
+
+    # Wait briefly in case the bot is first to act preflop.
+    Process.sleep(40)
+    state_after = TableServer.state(room.id, user_one.id)
+    assert state_after.hand_number >= 1
+
+    assert {:ok, removed} = TableServer.dealer_remove_bots(room.id, user_one.id)
+    refute Enum.any?(removed.players, &(&1.is_bot == true and not Map.get(&1, :folded, false)))
+  end
+
   defp create_test_room(user, name, spectator_enabled) do
     Rooms.create_room(
       %{

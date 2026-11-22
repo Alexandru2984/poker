@@ -104,6 +104,25 @@ defmodule MicuPoker.Accounts do
     |> Repo.insert()
   end
 
+  def create_bot_user(profile \\ "balanced") do
+    tag =
+      case profile |> to_string() |> String.downcase() do
+        "tag" -> "TAG"
+        "lag" -> "LAG"
+        "station" -> "CALL"
+        _ -> "GTO"
+      end
+
+    suffix = :crypto.strong_rand_bytes(2) |> Base.encode16(case: :lower)
+
+    %User{}
+    |> User.guest_changeset(%{
+      username: "Bot-#{tag}-#{suffix}",
+      virtual_chips: default_chips()
+    })
+    |> Repo.insert()
+  end
+
   def guest?(%User{is_guest: is_guest}), do: is_guest
   def guest?(_user), do: true
 

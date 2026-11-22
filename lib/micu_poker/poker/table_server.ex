@@ -5,12 +5,22 @@ defmodule MicuPoker.Poker.TableServer do
 
   use GenServer
 
-  alias MicuPoker.Poker.{Betting, Deck, Pot, TableState}
+  alias MicuPoker.Accounts
+  alias MicuPoker.Poker.{Betting, Bot, Card, Deck, Pot, TableState}
   alias MicuPoker.Rooms
 
   @timeout_tick :turn_timeout
   @call_timeout 8_000
   @idle_check_interval_ms :timer.minutes(5)
+
+  @reactions %{
+    "nh" => "👏 Nice hand!",
+    "gg" => "🤝 Good game",
+    "wp" => "🔥 Well played",
+    "gl" => "🍀 Good luck",
+    "oof" => "😬 Tough beat",
+    "think" => "🤔 Thinking..."
+  }
 
   def start_link(room_id) do
     GenServer.start_link(__MODULE__, room_id, name: via(room_id))
@@ -62,6 +72,20 @@ defmodule MicuPoker.Poker.TableServer do
 
   def dealer_kick_seat(room_id, dealer_id, seat_number),
     do: call(room_id, {:dealer_kick_seat, dealer_id, seat_number})
+
+  def dealer_add_bot(room_id, dealer_id, profile \\ "balanced"),
+    do: call(room_id, {:dealer_add_bot, dealer_id, profile})
+
+  def dealer_remove_bots(room_id, dealer_id),
+    do: call(room_id, {:dealer_remove_bots, dealer_id})
+
+  def show_cards(room_id, user_id),
+    do: call(room_id, {:show_cards, user_id})
+
+  def react(room_id, user_id, code),
+    do: call(room_id, {:react, user_id, code})
+
+  def reactions, do: @reactions
 
   def act(room_id, user_id, action, amount \\ 0),
     do: call(room_id, {:act, user_id, action, amount})
@@ -432,6 +456,119 @@ defmodule MicuPoker.Poker.TableServer do
     end
   end
 
+  def handle_call({:dealer_add_bot, dealer_id, profile}, _from, state) do
+    profile_code = Bot.normalize_profile(profile)
+
+    with :ok <- authorize_dealer(state, dealer_id),
+         {:ok, bot_user} <- Accounts.create_bot_user(profile_code),
+         {:ok, room_player} <- Rooms.seat_user(state.room, bot_user.id) do
+      bot_entry = %{
+        user_id: bot_user.id,
+        username: bot_user.username,
+        seat_number: room_player.seat_number,
+        stack: room_player.stack,
+        bet: 0,
+        contribution_total: 0,
+        cards: [],
+        folded: false,
+        all_in: false,
+        in_hand: false,
+        connected: true,
+        disconnect_deadline: nil,
+        leaving: false,
+        sitting_out: false,
+        is_bot: true,
+        bot_profile: profile_code,
+        revealed_cards: false,
+        reaction: nil
+      }
+
+      new_state =
+        %{
+          state
+          | players: Enum.sort_by([bot_entry | state.players], & &1.seat_number),
+            room: Rooms.get_room!(state.room_id)
+        }
+        |> add_log(
+          "Dealer added practice bot #{bot_user.username} (#{String.upcase(profile_code)}) at Seat #{room_player.seat_number}."
+        )
+        |> maybe_start_hand()
+        |> sync_room_status()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_remove_bots, dealer_id}, _from, state) do
+    case authorize_dealer(state, dealer_id) do
+      :ok ->
+        bots = Enum.filter(state.players, &Map.get(&1, :is_bot, false))
+
+        new_state =
+          Enum.reduce(bots, state, fn bot, acc ->
+            Rooms.leave_room(acc.room_id, bot.user_id)
+            remove_or_fold_player(acc, bot.user_id, "Practice bot #{bot.username} removed.")
+          end)
+          |> Map.put(:room, Rooms.get_room!(state.room_id))
+          |> sync_room_status()
+
+        broadcast(new_state)
+        {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:show_cards, user_id}, _from, state) do
+    with {:ok, player} <- seated_player(state, user_id),
+         :ok <- validate_connected(player),
+         true <- length(player.cards) == 2,
+         true <- state.stage in [:complete, :showdown] or player.folded do
+      cards_str = player.cards |> Enum.map(&Card.display/1) |> Enum.join(" ")
+
+      new_state =
+        state
+        |> update_player(user_id, &Map.put(&1, :revealed_cards, true))
+        |> add_log("#{player.username} showed [#{cards_str}].")
+        |> touch()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
+    else
+      false -> {:reply, {:error, :cannot_show_cards}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:react, user_id, code}, _from, state) do
+    normalized_code = code |> to_string() |> String.trim() |> String.downcase()
+
+    with {:ok, player} <- seated_player(state, user_id),
+         :ok <- validate_connected(player),
+         {:ok, label} <- Map.fetch(@reactions, normalized_code),
+         {:ok, state} <- allow_rate(state, :chat, user_id) do
+      now = DateTime.utc_now(:second)
+      reaction = %{code: normalized_code, label: label, at: now}
+      chat_item = %{username: player.username, message: label, at: now}
+
+      new_state =
+        state
+        |> update_player(user_id, &Map.put(&1, :reaction, reaction))
+        |> Map.put(:chat, [chat_item | state.chat] |> Enum.take(40))
+        |> touch()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
+    else
+      :error -> {:reply, {:error, :invalid_reaction}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
   def handle_call({:disconnect, user_id}, _from, state) do
     new_state =
       state
@@ -522,7 +659,40 @@ defmodule MicuPoker.Poker.TableServer do
 
   def handle_info({@timeout_tick, _token}, state), do: {:noreply, state}
 
+  def handle_info({:bot_turn, token}, %{timer_ref: {_timer_ref, token}, stage: stage} = state)
+      when stage in [:preflop, :flop, :turn, :river] do
+    case current_player(state) do
+      %{is_bot: true} = bot ->
+        {action, amount} = Bot.decide(state, bot)
+
+        case apply_action(state, bot.user_id, action, amount, true) do
+          {:ok, new_state} ->
+            broadcast(new_state)
+            {:noreply, new_state}
+
+          {:error, _reason} ->
+            fallback = if call_amount(state, bot) == 0, do: :check, else: :fold
+
+            case apply_action(state, bot.user_id, fallback, 0, true) do
+              {:ok, new_state} ->
+                broadcast(new_state)
+                {:noreply, new_state}
+
+              {:error, _} ->
+                {:noreply, state}
+            end
+        end
+
+      _not_a_bot ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:bot_turn, _token}, state), do: {:noreply, state}
+
   def handle_info({:start_next_hand, token}, %{next_hand_ref: {_timer_ref, token}} = state) do
+    state = auto_rebuy_bots(state)
+
     new_state =
       maybe_start_hand(%{
         state
@@ -944,7 +1114,9 @@ defmodule MicuPoker.Poker.TableServer do
             connected: true,
             disconnect_deadline: nil,
             leaving: false,
-            in_hand: true
+            in_hand: true,
+            revealed_cards: false,
+            reaction: nil
         }
       end)
 
@@ -1268,11 +1440,37 @@ defmodule MicuPoker.Poker.TableServer do
     token = make_ref()
     timer_ref = Process.send_after(self(), {@timeout_tick, token}, seconds * 1_000)
 
+    case current_player(state) do
+      %{is_bot: true} ->
+        Process.send_after(self(), {:bot_turn, token}, bot_turn_delay_ms())
+
+      _human_or_none ->
+        :ok
+    end
+
     %{
       state
       | timer_ref: {timer_ref, token},
         action_deadline: DateTime.add(DateTime.utc_now(:second), seconds, :second)
     }
+  end
+
+  defp bot_turn_delay_ms, do: int_env("BOT_TURN_DELAY_MS", 350, min: 1)
+
+  defp auto_rebuy_bots(state) do
+    buy_in = state.room.starting_chips
+
+    players =
+      Enum.map(state.players, fn player ->
+        if Map.get(player, :is_bot, false) and player.stack <= 0 do
+          Rooms.record_rebuy(state.room_id, player.user_id, buy_in)
+          %{player | stack: buy_in, sitting_out: false}
+        else
+          player
+        end
+      end)
+
+    %{state | players: players}
   end
 
   defp cancel_timer(%{timer_ref: nil} = state), do: state
@@ -1300,6 +1498,8 @@ defmodule MicuPoker.Poker.TableServer do
     room_id
     |> Rooms.list_players()
     |> Enum.map(fn rp ->
+      bot? = String.starts_with?(rp.user.username, "Bot-")
+
       %{
         user_id: rp.user_id,
         username: rp.user.username,
@@ -1311,10 +1511,14 @@ defmodule MicuPoker.Poker.TableServer do
         folded: false,
         all_in: false,
         in_hand: false,
-        connected: false,
+        connected: bot?,
         disconnect_deadline: nil,
         leaving: false,
-        sitting_out: false
+        sitting_out: false,
+        is_bot: bot?,
+        bot_profile: if(bot?, do: "balanced", else: nil),
+        revealed_cards: false,
+        reaction: nil
       }
     end)
   end
@@ -1495,10 +1699,16 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp room_status(state) do
+    human_connected =
+      Enum.count(state.players, fn player ->
+        player.connected and not Map.get(player, :leaving, false) and
+          not Map.get(player, :is_bot, false)
+      end)
+
     connected_count = Enum.count(state.players, &(&1.connected && !Map.get(&1, :leaving, false)))
 
     cond do
-      connected_count == 0 -> "complete"
+      human_connected == 0 -> "complete"
       connected_count < 2 -> "waiting"
       true -> "active"
     end

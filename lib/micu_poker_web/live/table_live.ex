@@ -256,8 +256,66 @@ defmodule MicuPokerWeb.TableLive do
     end
   end
 
+  def handle_event("dealer_add_bot", %{"profile" => profile}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_add_bot(room_id, user_id, profile) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "Practice AI bot added to the table.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("dealer_remove_bots", _params, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_remove_bots(room_id, user_id) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "Practice AI bots removed.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("show_cards", _params, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.show_cards(room_id, user_id) do
+      {:ok, table} ->
+        {:noreply, put_table(socket, table)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, human_error(reason))}
+    end
+  end
+
+  def handle_event("react", %{"code" => code}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.react(room_id, user_id, code) do
+      {:ok, table} ->
+        {:noreply, put_table(socket, table)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, human_error(reason))}
+    end
+  end
+
   def handle_event("seat", %{"seat" => command}, socket)
-      when command in ~w(sit_out sit_in rebuy) do
+      when command in ~w(sit_out sit_in rebuy show_cards) do
     room_id = socket.assigns.room_id
     user_id = socket.assigns.current_user.id
 
@@ -266,6 +324,7 @@ defmodule MicuPokerWeb.TableLive do
         "sit_out" -> TableServer.sit_out(room_id, user_id)
         "sit_in" -> TableServer.sit_in(room_id, user_id)
         "rebuy" -> TableServer.rebuy(room_id, user_id)
+        "show_cards" -> TableServer.show_cards(room_id, user_id)
       end
 
     case result do
@@ -416,6 +475,9 @@ defmodule MicuPokerWeb.TableLive do
     do: "check blinds, buy-in and currency (big blind must be >= 2x small blind and <= buy-in)"
 
   defp human_error(:cannot_kick_self), do: "use Leave to vacate your own seat"
+  defp human_error(:cannot_show_cards), do: "cards can only be shown after folding or at hand end"
+  defp human_error(:invalid_reaction), do: "unknown table reaction"
+  defp human_error(:room_full), do: "table has no open seats left"
   defp human_error(reason), do: to_string(reason)
 
   defp clamp_bet_amount(amount, table, room) do

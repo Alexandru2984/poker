@@ -242,6 +242,75 @@ defmodule MicuPoker.Rooms do
     |> Repo.transaction()
   end
 
+  @doc """
+  Records a dealer-controlled fictional chip adjustment outside a hand.
+  """
+  def record_dealer_adjustment(room_id, user_id, new_stack, delta, reason \\ "dealer_grant")
+      when is_integer(new_stack) and new_stack >= 0 and is_integer(delta) do
+    now = DateTime.utc_now(:second)
+
+    multi =
+      Multi.new()
+      |> Multi.update_all(
+        :stack,
+        from(rp in RoomPlayer,
+          where: rp.room_id == ^room_id and rp.user_id == ^user_id and is_nil(rp.left_at)
+        ),
+        set: [stack: new_stack]
+      )
+
+    multi =
+      if delta != 0 do
+        Multi.insert(
+          multi,
+          :ledger,
+          ChipLedger.changeset(%ChipLedger{}, %{
+            user_id: user_id,
+            room_id: room_id,
+            delta: delta,
+            reason: reason,
+            created_at: now
+          })
+        )
+      else
+        multi
+      end
+
+    Repo.transaction(multi)
+  end
+
+  def update_room_settings(%Room{} = room, attrs) do
+    room
+    |> Room.dealer_settings_changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} -> {:ok, with_player_count(updated)}
+      error -> error
+    end
+  end
+
+  def assign_dealer(%Room{} = room, new_dealer_user_id) when is_integer(new_dealer_user_id) do
+    room
+    |> Changeset.change(dealer_user_id: new_dealer_user_id)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} -> {:ok, with_player_count(updated)}
+      error -> error
+    end
+  end
+
+  def dealer?(%Room{}, nil), do: false
+
+  def dealer?(%Room{dealer_user_id: dealer_id, created_by: creator_id}, user_id) do
+    cond do
+      not is_nil(dealer_id) -> dealer_id == user_id
+      not is_nil(creator_id) -> creator_id == user_id
+      true -> false
+    end
+  end
+
+  def dealer?(_room, _user_id), do: false
+
   def record_action(hand_id, user_id, action, amount, street) do
     %HandAction{}
     |> HandAction.changeset(%{
@@ -304,7 +373,8 @@ defmodule MicuPoker.Rooms do
       max_players: min(Room.max_players(), 6),
       starting_chips: int_env("DEFAULT_STARTING_CHIPS", 1000),
       small_blind: int_env("DEFAULT_SMALL_BLIND", 5),
-      big_blind: int_env("DEFAULT_BIG_BLIND", 10)
+      big_blind: int_env("DEFAULT_BIG_BLIND", 10),
+      currency: "CHIPS"
     }
   end
 
@@ -340,10 +410,12 @@ defmodule MicuPoker.Rooms do
       small_blind: attr_or_default(attrs, "small_blind", defaults.small_blind),
       big_blind: attr_or_default(attrs, "big_blind", defaults.big_blind),
       starting_chips: attr_or_default(attrs, "starting_chips", defaults.starting_chips),
+      currency: attr_or_default(attrs, "currency", defaults.currency),
       spectator_enabled: bool_attr(attrs, "spectator_enabled", true),
       password: attr_or_default(attrs, "password", nil),
       status: "waiting",
-      created_by: user_id
+      created_by: user_id,
+      dealer_user_id: user_id
     }
   end
 

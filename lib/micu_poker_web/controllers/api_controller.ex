@@ -56,6 +56,7 @@ defmodule MicuPokerWeb.ApiController do
       small_blind: room.small_blind,
       big_blind: room.big_blind,
       starting_chips: room.starting_chips,
+      currency: room.currency || "CHIPS",
       status: room.status,
       spectator_enabled: room.spectator_enabled,
       play_money_only: true

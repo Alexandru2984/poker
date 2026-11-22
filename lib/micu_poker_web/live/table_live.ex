@@ -130,7 +130,7 @@ defmodule MicuPokerWeb.TableLive do
   end
 
   def handle_event("panel", %{"panel" => panel}, socket)
-      when panel in ~w(chat log hands info) do
+      when panel in ~w(chat log hands info dealer) do
     # History is only queried when the tab is actually opened, so the page load
     # and every table broadcast stay off the database.
     socket =
@@ -144,6 +144,117 @@ defmodule MicuPokerWeb.TableLive do
   end
 
   def handle_event("panel", _params, socket), do: {:noreply, socket}
+
+  def handle_event("dealer_grant", %{"seat" => seat, "amount" => amount}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_grant_chips(room_id, user_id, seat, amount) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "Fictional funds granted.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("dealer_set_stack", %{"dealer" => %{"seat" => seat, "stack" => stack}}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_set_stack(room_id, user_id, seat, stack) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "Player stack updated.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("dealer_reset_stacks", _params, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_reset_stacks(room_id, user_id) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "All player stacks reset to starting buy-in.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("dealer_update_table", %{"table_settings" => settings}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_update_table(room_id, user_id, settings) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> assign(:room, Rooms.get_room!(room_id))
+         |> put_table(table)
+         |> put_flash(:info, "Table currency & stakes updated.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("dealer_toggle_pause", _params, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_toggle_pause(room_id, user_id) do
+      {:ok, table} ->
+        {:noreply, put_table(socket, table)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("dealer_transfer", %{"seat" => seat}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_transfer(room_id, user_id, seat) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> assign(:room, Rooms.get_room!(room_id))
+         |> put_table(table)
+         |> put_flash(:info, "Dealer privileges transferred.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("dealer_kick_seat", %{"seat" => seat}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_kick_seat(room_id, user_id, seat) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "Seat cleared by dealer.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
 
   def handle_event("seat", %{"seat" => command}, socket)
       when command in ~w(sit_out sit_in rebuy) do
@@ -298,6 +409,13 @@ defmodule MicuPokerWeb.TableLive do
   defp human_error(:table_unavailable), do: "the table is restarting, try again"
   defp human_error(:hand_in_progress), do: "wait for the hand to finish"
   defp human_error(:stack_not_empty), do: "you still have chips to play"
+  defp human_error(:not_dealer), do: "only the table dealer/host can do that"
+  defp human_error(:invalid_amount), do: "enter a valid fictional chip amount"
+
+  defp human_error(:invalid_table_settings),
+    do: "check blinds, buy-in and currency (big blind must be >= 2x small blind and <= buy-in)"
+
+  defp human_error(:cannot_kick_self), do: "use Leave to vacate your own seat"
   defp human_error(reason), do: to_string(reason)
 
   defp clamp_bet_amount(amount, table, room) do

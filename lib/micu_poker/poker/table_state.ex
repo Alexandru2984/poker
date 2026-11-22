@@ -2,11 +2,15 @@ defmodule MicuPoker.Poker.TableState do
   @moduledoc false
 
   alias MicuPoker.Poker.{Card, HandSummary}
+  alias MicuPoker.Rooms
+  alias MicuPoker.Rooms.Room
 
   def sanitize(state, viewer_id \\ nil) do
     %{
       room: room_public(state.room),
       stage: state.stage,
+      paused: Map.get(state, :paused, false),
+      is_dealer: Rooms.dealer?(state.room, viewer_id),
       hand_number: state.hand_number,
       board: Enum.map(state.board, &Card.public/1),
       board_summary: HandSummary.board_texture(state.board),
@@ -28,6 +32,8 @@ defmodule MicuPoker.Poker.TableState do
   end
 
   defp room_public(room) do
+    currency = Map.get(room, :currency) || "CHIPS"
+
     %{
       id: room.id,
       name: room.name,
@@ -35,6 +41,8 @@ defmodule MicuPoker.Poker.TableState do
       small_blind: room.small_blind,
       big_blind: room.big_blind,
       starting_chips: room.starting_chips,
+      currency: currency,
+      currency_info: Room.currency_info(currency),
       status: room.status,
       spectator_enabled: room.spectator_enabled
     }
@@ -53,6 +61,7 @@ defmodule MicuPoker.Poker.TableState do
     |> public_player_fields(show_cards?, state.board)
     |> maybe_put_user_id(player.user_id, is_me?)
     |> Map.put(:is_me, is_me?)
+    |> Map.put(:is_dealer, Rooms.dealer?(state.room, player.user_id))
   end
 
   defp public_player_fields(player, show_cards?, board) do

@@ -632,6 +632,67 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert {:error, :rate_limited} = TableServer.act(room.id, current_user_id, "fold", 0)
   end
 
+  test "table dealer can pause dealing, grant fictional funds, change currency/blinds, and transfer dealer role",
+       %{
+         room: room,
+         user_one: user_one,
+         user_two: user_two
+       } do
+    # user_one created the room and is the initial dealer.
+    assert {:ok, state_one} = join_connected(room, user_one)
+    assert state_one.is_dealer == true
+
+    # Non-dealer cannot use dealer controls.
+    assert {:error, :not_dealer} =
+             TableServer.dealer_grant_chips(room.id, user_two.id, 1, 500)
+
+    assert {:error, :not_dealer} =
+             TableServer.dealer_toggle_pause(room.id, user_two.id)
+
+    # Dealer pauses dealing before player two sits down so they can configure stacks/stakes.
+    assert {:ok, paused_state} = TableServer.dealer_toggle_pause(room.id, user_one.id)
+    assert paused_state.paused == true
+
+    assert {:ok, waiting_state} = join_connected(room, user_two)
+    assert waiting_state.stage == :waiting
+    assert waiting_state.is_dealer == false
+
+    # Dealer grants +2500 fictional chips to seat 2 and sets seat 1 stack to 3000.
+    assert {:ok, _} = TableServer.dealer_grant_chips(room.id, user_one.id, 2, 2500)
+    assert {:ok, _} = TableServer.dealer_set_stack(room.id, user_one.id, 1, 3000)
+
+    assert player_stack(room, user_two) == 3500
+    assert player_stack(room, user_one) == 3000
+
+    # Dealer updates table currency to FIC-RON and blinds to 25/50.
+    assert {:ok, updated_state} =
+             TableServer.dealer_update_table(room.id, user_one.id, %{
+               "small_blind" => "25",
+               "big_blind" => "50",
+               "starting_chips" => "2000",
+               "currency" => "FIC-RON"
+             })
+
+    assert updated_state.room.currency == "FIC-RON"
+    assert updated_state.room.small_blind == 25
+    assert updated_state.room.big_blind == 50
+
+    # Dealer transfers dealer role to seat 2 (user_two).
+    assert {:ok, transferred} = TableServer.dealer_transfer(room.id, user_one.id, 2)
+    assert transferred.is_dealer == false
+    assert TableServer.state(room.id, user_two.id).is_dealer == true
+
+    # New dealer resumes dealing, starting the hand immediately with 25/50 blinds.
+    assert {:ok, live_state} = TableServer.dealer_toggle_pause(room.id, user_two.id)
+    assert live_state.paused == false
+    assert live_state.stage == :preflop
+    assert live_state.pot == 75
+
+    # Mid-hand stack tampering on active players is rejected.
+    assert {:error, :hand_in_progress} =
+             TableServer.dealer_grant_chips(room.id, user_two.id, 1, 500)
+  end
+
   defp create_test_room(user, name, spectator_enabled) do
     Rooms.create_room(
       %{

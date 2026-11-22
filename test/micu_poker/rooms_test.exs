@@ -61,6 +61,38 @@ defmodule MicuPoker.RoomsTest do
 
     assert room.name == "Good Room"
     assert room.spectator_enabled
+    assert room.currency == "CHIPS"
+    assert room.dealer_user_id == user.id
+    assert Rooms.dealer?(room, user.id)
+  end
+
+  test "room creation supports fictional play-money currencies and rejects unknown ones" do
+    {:ok, user} = Accounts.create_guest_user()
+
+    for code <- Room.currency_codes() do
+      assert {:ok, room} =
+               Rooms.create_room(
+                 %{
+                   "name" => "Currency #{code}",
+                   "currency" => code
+                 },
+                 user.id
+               )
+
+      assert room.currency == code
+      assert Room.currency_info(code).code == code
+    end
+
+    assert {:error, changeset} =
+             Rooms.create_room(
+               %{
+                 "name" => "Invalid Currency",
+                 "currency" => "BTC-REAL"
+               },
+               user.id
+             )
+
+    assert "is invalid" in errors_on(changeset).currency
   end
 
   test "room creation rejects invalid numeric input instead of defaulting it" do

@@ -100,6 +100,55 @@ defmodule MicuPokerWeb.TableChannel do
     {:reply, {:error, %{reason: "invalid_payload"}}, socket}
   end
 
+  def handle_in("dealer", %{"command" => command} = payload, socket)
+      when command in ~w(grant_chips set_stack reset_stacks update_table toggle_pause transfer kick_seat) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.user_id
+
+    reply =
+      case command do
+        "grant_chips" ->
+          TableServer.dealer_grant_chips(
+            room_id,
+            user_id,
+            Map.get(payload, "seat", 0),
+            Map.get(payload, "amount", 0)
+          )
+
+        "set_stack" ->
+          TableServer.dealer_set_stack(
+            room_id,
+            user_id,
+            Map.get(payload, "seat", 0),
+            Map.get(payload, "stack", 0)
+          )
+
+        "reset_stacks" ->
+          TableServer.dealer_reset_stacks(room_id, user_id)
+
+        "update_table" ->
+          TableServer.dealer_update_table(room_id, user_id, Map.get(payload, "settings", %{}))
+
+        "toggle_pause" ->
+          TableServer.dealer_toggle_pause(room_id, user_id)
+
+        "transfer" ->
+          TableServer.dealer_transfer(room_id, user_id, Map.get(payload, "seat", 0))
+
+        "kick_seat" ->
+          TableServer.dealer_kick_seat(room_id, user_id, Map.get(payload, "seat", 0))
+      end
+
+    case reply do
+      {:ok, state} -> {:reply, {:ok, state}, socket}
+      {:error, reason} -> {:reply, {:error, %{reason: to_string(reason)}}, socket}
+    end
+  end
+
+  def handle_in("dealer", _payload, socket) do
+    {:reply, {:error, %{reason: "invalid_payload"}}, socket}
+  end
+
   def handle_in("chat", %{"message" => message}, socket) do
     reply = TableServer.chat(socket.assigns.room_id, socket.assigns.user_id, message)
     {:reply, normalize_reply(reply), socket}

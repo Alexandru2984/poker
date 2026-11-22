@@ -39,6 +39,30 @@ defmodule MicuPoker.Poker.TableServer do
   """
   def rebuy(room_id, user_id), do: call(room_id, {:rebuy, user_id})
 
+  @doc """
+  Table dealer / host controls over fictional balances, stakes and table flow.
+  """
+  def dealer_grant_chips(room_id, dealer_id, seat_number, amount),
+    do: call(room_id, {:dealer_grant_chips, dealer_id, seat_number, amount})
+
+  def dealer_set_stack(room_id, dealer_id, seat_number, new_stack),
+    do: call(room_id, {:dealer_set_stack, dealer_id, seat_number, new_stack})
+
+  def dealer_reset_stacks(room_id, dealer_id),
+    do: call(room_id, {:dealer_reset_stacks, dealer_id})
+
+  def dealer_update_table(room_id, dealer_id, attrs),
+    do: call(room_id, {:dealer_update_table, dealer_id, attrs})
+
+  def dealer_toggle_pause(room_id, dealer_id),
+    do: call(room_id, {:dealer_toggle_pause, dealer_id})
+
+  def dealer_transfer(room_id, dealer_id, seat_number),
+    do: call(room_id, {:dealer_transfer, dealer_id, seat_number})
+
+  def dealer_kick_seat(room_id, dealer_id, seat_number),
+    do: call(room_id, {:dealer_kick_seat, dealer_id, seat_number})
+
   def act(room_id, user_id, action, amount \\ 0),
     do: call(room_id, {:act, user_id, action, amount})
 
@@ -77,6 +101,7 @@ defmodule MicuPoker.Poker.TableServer do
       board: [],
       pot: 0,
       stage: :waiting,
+      paused: false,
       hand_number: 0,
       hand: nil,
       current_bet: 0,
@@ -201,6 +226,209 @@ defmodule MicuPoker.Poker.TableServer do
 
         broadcast(new_state)
         {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
+    end
+  end
+
+  def handle_call({:dealer_grant_chips, dealer_id, seat_number, amount}, _from, state) do
+    seat = normalize_amount(seat_number)
+    amount = normalize_amount(amount)
+
+    with :ok <- authorize_dealer(state, dealer_id),
+         true <- amount > 0 and amount <= 100_000,
+         {:ok, target} <- player_at_seat(state, seat),
+         :ok <- ensure_player_not_contesting_hand(state, target) do
+      new_stack = min(target.stack + amount, 500_000)
+      actual_delta = new_stack - target.stack
+
+      Rooms.record_dealer_adjustment(
+        state.room_id,
+        target.user_id,
+        new_stack,
+        actual_delta,
+        "dealer_grant"
+      )
+
+      currency = state.room.currency || "CHIPS"
+
+      new_state =
+        state
+        |> update_player(target.user_id, &%{&1 | stack: new_stack, sitting_out: false})
+        |> add_log(
+          "Dealer granted +#{actual_delta} #{currency} to #{target.username} (Seat #{seat})."
+        )
+        |> maybe_start_hand()
+        |> sync_room_status()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      false -> {:reply, {:error, :invalid_amount}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_set_stack, dealer_id, seat_number, new_stack}, _from, state) do
+    seat = normalize_amount(seat_number)
+    new_stack = normalize_amount(new_stack)
+
+    with :ok <- authorize_dealer(state, dealer_id),
+         true <- new_stack >= 0 and new_stack <= 500_000,
+         {:ok, target} <- player_at_seat(state, seat),
+         :ok <- ensure_player_not_contesting_hand(state, target) do
+      delta = new_stack - target.stack
+
+      Rooms.record_dealer_adjustment(
+        state.room_id,
+        target.user_id,
+        new_stack,
+        delta,
+        "dealer_adjust"
+      )
+
+      currency = state.room.currency || "CHIPS"
+
+      new_state =
+        state
+        |> update_player(target.user_id, &%{&1 | stack: new_stack})
+        |> add_log(
+          "Dealer set #{target.username}'s stack (Seat #{seat}) to #{new_stack} #{currency}."
+        )
+        |> maybe_start_hand()
+        |> sync_room_status()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      false -> {:reply, {:error, :invalid_amount}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_reset_stacks, dealer_id}, _from, state) do
+    with :ok <- authorize_dealer(state, dealer_id),
+         :ok <- ensure_between_hands(state) do
+      buy_in = state.room.starting_chips
+      currency = state.room.currency || "CHIPS"
+
+      Enum.each(state.players, fn player ->
+        delta = buy_in - player.stack
+
+        Rooms.record_dealer_adjustment(
+          state.room_id,
+          player.user_id,
+          buy_in,
+          delta,
+          "dealer_reset"
+        )
+      end)
+
+      new_state =
+        %{
+          state
+          | players: Enum.map(state.players, &%{&1 | stack: buy_in, sitting_out: false})
+        }
+        |> add_log("Dealer reset all stacks to #{buy_in} #{currency}.")
+        |> maybe_start_hand()
+        |> sync_room_status()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_update_table, dealer_id, attrs}, _from, state) do
+    with :ok <- authorize_dealer(state, dealer_id),
+         :ok <- ensure_between_hands(state),
+         {:ok, updated_room} <- Rooms.update_room_settings(state.room, attrs) do
+      new_state =
+        %{
+          state
+          | room: updated_room,
+            min_raise: updated_room.big_blind
+        }
+        |> add_log(
+          "Dealer updated table stakes to #{updated_room.small_blind}/#{updated_room.big_blind} (#{updated_room.currency}, buy-in #{updated_room.starting_chips})."
+        )
+        |> touch()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      {:error, %Ecto.Changeset{}} -> {:reply, {:error, :invalid_table_settings}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_toggle_pause, dealer_id}, _from, state) do
+    case authorize_dealer(state, dealer_id) do
+      :ok ->
+        paused? = not Map.get(state, :paused, false)
+
+        new_state =
+          if paused? do
+            state
+            |> Map.put(:paused, true)
+            |> cancel_next_hand()
+            |> add_log("Dealer paused dealing.")
+          else
+            state
+            |> Map.put(:paused, false)
+            |> add_log("Dealer resumed dealing.")
+            |> maybe_start_hand()
+          end
+          |> sync_room_status()
+
+        broadcast(new_state)
+        {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_transfer, dealer_id, seat_number}, _from, state) do
+    seat = normalize_amount(seat_number)
+
+    with :ok <- authorize_dealer(state, dealer_id),
+         {:ok, target} <- player_at_seat(state, seat),
+         {:ok, updated_room} <- Rooms.assign_dealer(state.room, target.user_id) do
+      new_state =
+        %{state | room: updated_room}
+        |> add_log("Dealer privileges transferred to #{target.username} (Seat #{seat}).")
+        |> touch()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_kick_seat, dealer_id, seat_number}, _from, state) do
+    seat = normalize_amount(seat_number)
+
+    with :ok <- authorize_dealer(state, dealer_id),
+         {:ok, target} <- player_at_seat(state, seat),
+         false <- target.user_id == dealer_id do
+      Rooms.leave_room(state.room_id, target.user_id)
+
+      new_state =
+        state
+        |> clear_connections(target.user_id)
+        |> cancel_disconnect_grace(target.user_id)
+        |> remove_or_fold_player(
+          target.user_id,
+          "Dealer removed #{target.username} (Seat #{seat}) from the table."
+        )
+        |> sync_room_status()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      true -> {:reply, {:error, :cannot_kick_self}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
@@ -630,6 +858,16 @@ defmodule MicuPoker.Poker.TableServer do
     state
   end
 
+  defp maybe_start_hand(%{paused: true} = state) do
+    state = %{state | players: Enum.reject(state.players, &Map.get(&1, :leaving, false))}
+
+    if state.stage in [:waiting, :complete, :showdown] do
+      %{state | turn_seat: nil, action_deadline: nil}
+    else
+      state
+    end
+  end
+
   defp maybe_start_hand(%{stage: stage} = state) when stage in [:waiting, :complete, :showdown] do
     state = %{state | players: Enum.reject(state.players, &Map.get(&1, :leaving, false))}
     playable = Enum.filter(state.players, &dealt_in?/1)
@@ -642,6 +880,37 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp maybe_start_hand(state), do: state
+
+  defp authorize_dealer(state, user_id) do
+    if Rooms.dealer?(state.room, user_id) do
+      :ok
+    else
+      {:error, :not_dealer}
+    end
+  end
+
+  defp player_at_seat(state, seat_number) do
+    case Enum.find(state.players, &(&1.seat_number == seat_number)) do
+      nil -> {:error, :not_seated}
+      player -> {:ok, player}
+    end
+  end
+
+  defp ensure_between_hands(state) do
+    if state.stage in [:waiting, :complete, :showdown] do
+      :ok
+    else
+      {:error, :hand_in_progress}
+    end
+  end
+
+  defp ensure_player_not_contesting_hand(state, player) do
+    if state.stage in [:preflop, :flop, :turn, :river] and player.in_hand and not player.folded do
+      {:error, :hand_in_progress}
+    else
+      :ok
+    end
+  end
 
   defp start_hand(state) do
     state = cancel_next_hand(state)

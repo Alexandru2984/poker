@@ -7,6 +7,60 @@ defmodule MicuPoker.Rooms.Room do
   @min_password_length 4
   @max_password_length 200
 
+  @currencies [
+    %{
+      code: "CHIPS",
+      label: "Virtual Chips",
+      symbol: "CHIPS",
+      short: "◈",
+      description: "Standard fictional casino chips (play money only)"
+    },
+    %{
+      code: "FIC-RON",
+      label: "Fictional RON",
+      symbol: "F-RON",
+      short: "F-RON",
+      description: "Fictional Romanian Leu units (play money only)"
+    },
+    %{
+      code: "FIC-EUR",
+      label: "Fictional EUR",
+      symbol: "F-EUR",
+      short: "F-€",
+      description: "Fictional Euro units (play money only)"
+    },
+    %{
+      code: "FIC-USD",
+      label: "Fictional USD",
+      symbol: "F-USD",
+      short: "F-$",
+      description: "Fictional Dollar units (play money only)"
+    },
+    %{
+      code: "GOLD",
+      label: "Virtual Gold",
+      symbol: "GOLD",
+      short: "⚜",
+      description: "Fictional gold coins (play money only)"
+    },
+    %{
+      code: "CREDITS",
+      label: "Arcade Credits",
+      symbol: "CR",
+      short: "★",
+      description: "Fictional simulator credits (play money only)"
+    },
+    %{
+      code: "BB-PTS",
+      label: "Tournament Points",
+      symbol: "PTS",
+      short: "PTS",
+      description: "Fictional tournament points (play money only)"
+    }
+  ]
+
+  @currency_codes Enum.map(@currencies, & &1.code)
+
   schema "rooms" do
     field :name, :string
     field :slug, :string
@@ -14,14 +68,31 @@ defmodule MicuPoker.Rooms.Room do
     field :small_blind, :integer, default: 5
     field :big_blind, :integer, default: 10
     field :starting_chips, :integer, default: 1000
+    field :currency, :string, default: "CHIPS"
     field :status, :string, default: "waiting"
     field :password_hash, :string
     field :spectator_enabled, :boolean, default: true
     field :player_count, :integer, virtual: true, default: 0
     field :password, :string, virtual: true, redact: true
     field :created_by, :id
+    field :dealer_user_id, :id
 
     timestamps(type: :utc_datetime)
+  end
+
+  def currencies, do: @currencies
+  def currency_codes, do: @currency_codes
+
+  def currency_info(code) when is_binary(code) do
+    normalized = code |> String.trim() |> String.upcase()
+    Enum.find(@currencies, List.first(@currencies), &(&1.code == normalized))
+  end
+
+  def currency_info(_code), do: List.first(@currencies)
+
+  def format_amount(amount, code \\ "CHIPS") when is_integer(amount) do
+    info = currency_info(code)
+    "#{amount} #{info.symbol}"
   end
 
   def changeset(room, attrs) do
@@ -33,11 +104,17 @@ defmodule MicuPoker.Rooms.Room do
       :small_blind,
       :big_blind,
       :starting_chips,
+      :currency,
       :status,
       :password,
       :spectator_enabled,
-      :created_by
+      :created_by,
+      :dealer_user_id
     ])
+    |> update_change(:currency, fn
+      value when is_binary(value) -> value |> String.trim() |> String.upcase()
+      value -> value
+    end)
     |> validate_required([
       :name,
       :slug,
@@ -45,9 +122,11 @@ defmodule MicuPoker.Rooms.Room do
       :small_blind,
       :big_blind,
       :starting_chips,
+      :currency,
       :spectator_enabled,
       :status
     ])
+    |> validate_inclusion(:currency, @currency_codes)
     |> validate_length(:name, min: 3, max: 40)
     |> validate_format(:name, ~r/^[A-Za-z0-9 _.-]+$/)
     |> validate_number(:max_players,
@@ -65,6 +144,25 @@ defmodule MicuPoker.Rooms.Room do
     |> validate_password()
     |> put_password_hash()
     |> unique_constraint(:slug)
+  end
+
+  def dealer_settings_changeset(room, attrs) do
+    room
+    |> cast(attrs, [:small_blind, :big_blind, :starting_chips, :currency])
+    |> update_change(:currency, fn
+      value when is_binary(value) -> value |> String.trim() |> String.upcase()
+      value -> value
+    end)
+    |> validate_required([:small_blind, :big_blind, :starting_chips, :currency])
+    |> validate_inclusion(:currency, @currency_codes)
+    |> validate_number(:small_blind, greater_than: 0, less_than_or_equal_to: 1_000)
+    |> validate_number(:big_blind, greater_than: 0, less_than_or_equal_to: 2_000)
+    |> validate_number(:starting_chips,
+      greater_than_or_equal_to: 100,
+      less_than_or_equal_to: 100_000
+    )
+    |> validate_blinds()
+    |> validate_blinds_fit_starting_stack()
   end
 
   # A blank password means a public table, not an empty password.

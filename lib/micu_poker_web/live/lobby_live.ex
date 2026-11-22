@@ -2,7 +2,12 @@ defmodule MicuPokerWeb.LobbyLive do
   use MicuPokerWeb, :live_view
 
   alias MicuPoker.Accounts
+  alias MicuPoker.RateLimiter
   alias MicuPoker.Rooms
+
+  @room_create_limit 10
+  @rename_limit 10
+  @rate_window_ms 60_000
 
   @impl true
   def mount(_params, _session, socket) do
@@ -25,26 +30,52 @@ defmodule MicuPokerWeb.LobbyLive do
   end
 
   def handle_event("rename", %{"user" => %{"username" => username}}, socket) do
-    case Accounts.rename_user(socket.assigns.current_user, username) do
-      {:ok, user} ->
-        {:noreply, socket |> assign(:current_user, user) |> put_flash(:info, "Name updated.")}
+    user_id = socket.assigns.current_user.id
 
-      {:error, _changeset} ->
+    case RateLimiter.hit({:rename_user, user_id}, @rename_limit, @rate_window_ms) do
+      {:allow, _} ->
+        case Accounts.rename_user(socket.assigns.current_user, username) do
+          {:ok, user} ->
+            {:noreply, socket |> assign(:current_user, user) |> put_flash(:info, "Name updated.")}
+
+          {:error, _changeset} ->
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               "Use 2-24 letters, numbers, spaces, dashes, or underscores."
+             )}
+        end
+
+      {:deny, _} ->
         {:noreply,
-         put_flash(socket, :error, "Use 2-24 letters, numbers, spaces, dashes, or underscores.")}
+         put_flash(socket, :error, "You are updating your name too quickly. Wait a moment.")}
     end
   end
 
   def handle_event("create_room", %{"room" => params}, socket) do
-    case Rooms.create_room(params, socket.assigns.current_user.id) do
-      {:ok, room} ->
-        {:noreply, push_navigate(socket, to: ~p"/rooms/#{room.id}")}
+    user_id = socket.assigns.current_user.id
 
-      {:error, changeset} ->
+    case RateLimiter.hit({:room_create_user, user_id}, @room_create_limit, @rate_window_ms) do
+      {:allow, _} ->
+        case Rooms.create_room(params, user_id) do
+          {:ok, room} ->
+            {:noreply, push_navigate(socket, to: ~p"/rooms/#{room.id}")}
+
+          {:error, changeset} ->
+            {:noreply,
+             socket
+             |> put_flash(:error, "Room validation failed: #{first_error(changeset)}")
+             |> assign(:room_form, to_form(changeset, as: :room))}
+        end
+
+      {:deny, _} ->
         {:noreply,
-         socket
-         |> put_flash(:error, "Room validation failed: #{first_error(changeset)}")
-         |> assign(:room_form, to_form(changeset, as: :room))}
+         put_flash(
+           socket,
+           :error,
+           "You are creating or joining tables too quickly. Wait a moment."
+         )}
     end
   end
 

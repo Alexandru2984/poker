@@ -174,6 +174,11 @@ defmodule MicuPoker.Rooms do
 
     Multi.new()
     |> Multi.update(:hand, Hand.changeset(hand, Map.put(attrs, :ended_at, now)))
+    |> Multi.update_all(
+      :room_touch,
+      from(r in Room, where: r.id == ^hand.room_id),
+      set: [updated_at: now]
+    )
     |> then(fn multi ->
       Enum.reduce(players, multi, fn player, acc ->
         Multi.update_all(

@@ -1,8 +1,13 @@
 defmodule MicuPokerWeb.RoomController do
   use MicuPokerWeb, :controller
 
+  alias MicuPoker.RateLimiter
   alias MicuPoker.Rooms
   alias MicuPoker.Poker.{TableServer, TableSupervisor}
+  alias MicuPokerWeb.Plugs.RemoteIp
+
+  @unlock_attempts_per_room 5
+  @unlock_window_ms :timer.minutes(5)
 
   def create(conn, %{"room" => params}) do
     case Rooms.create_room(params, conn.assigns.current_user.id) do
@@ -56,18 +61,32 @@ defmodule MicuPokerWeb.RoomController do
 
     case Rooms.fetch_room(id) do
       {:ok, room} ->
-        if Rooms.password_matches?(room, password) do
-          conn
-          |> grant_room(room.id)
-          |> redirect(to: ~p"/rooms/#{room.id}")
-        else
-          conn
-          |> put_status(:unauthorized)
-          |> render(:unlock,
-            room: room,
-            error_message: "That table password is not correct.",
-            page_title: room.name
-          )
+        case check_unlock_rate(conn, room.id) do
+          :ok ->
+            if Rooms.password_matches?(room, password) do
+              reset_unlock_rate(conn, room.id)
+
+              conn
+              |> grant_room(room.id)
+              |> redirect(to: ~p"/rooms/#{room.id}")
+            else
+              conn
+              |> put_status(:unauthorized)
+              |> render(:unlock,
+                room: room,
+                error_message: "That table password is not correct.",
+                page_title: room.name
+              )
+            end
+
+          {:error, :rate_limited} ->
+            conn
+            |> put_status(:too_many_requests)
+            |> render(:unlock,
+              room: room,
+              error_message: "Too many password attempts for this table. Try again later.",
+              page_title: room.name
+            )
         end
 
       {:error, :not_found} ->
@@ -75,6 +94,24 @@ defmodule MicuPokerWeb.RoomController do
         |> put_flash(:error, "Table was not found.")
         |> redirect(to: ~p"/lobby")
     end
+  end
+
+  defp check_unlock_rate(conn, room_id) do
+    ip = conn.assigns[:client_ip] || RemoteIp.format(conn.remote_ip)
+
+    case RateLimiter.hit(
+           {:room_unlock, ip, room_id},
+           @unlock_attempts_per_room,
+           @unlock_window_ms
+         ) do
+      {:allow, _} -> :ok
+      {:deny, _} -> {:error, :rate_limited}
+    end
+  end
+
+  defp reset_unlock_rate(conn, room_id) do
+    ip = conn.assigns[:client_ip] || RemoteIp.format(conn.remote_ip)
+    RateLimiter.reset({:room_unlock, ip, room_id})
   end
 
   # The creator never needs their own password.

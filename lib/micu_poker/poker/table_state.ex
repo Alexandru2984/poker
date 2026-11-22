@@ -45,7 +45,8 @@ defmodule MicuPoker.Poker.TableState do
 
     show_cards? =
       is_me? or
-        state.stage == :showdown or
+        Map.get(player, :revealed_cards, false) or
+        (state.stage == :showdown and player.in_hand and not player.folded) or
         (state.stage == :waiting and player.cards == [])
 
     player

@@ -80,15 +80,17 @@ defmodule MicuPokerWeb.SessionController do
     end
   end
 
-  defp reset_rate(conn, username) do
-    RateLimiter.reset({:login_ip, conn.assigns[:client_ip] || RemoteIp.format(conn.remote_ip)})
+  defp reset_rate(_conn, username) do
+    # Only reset the targeted username bucket on a successful sign-in. Resetting
+    # the IP bucket would let an attacker sign into their own account every few
+    # requests to clear their IP-wide failed-attempt counter.
     RateLimiter.reset({:login_user, normalize(username)})
   end
 
   defp normalize(username), do: username |> to_string() |> String.trim() |> String.downcase()
 
   defp safe_return_to(path) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//"), do: path
+    if MicuPokerWeb.UserAuth.safe_local_path?(path), do: path
   end
 
   defp safe_return_to(_path), do: nil

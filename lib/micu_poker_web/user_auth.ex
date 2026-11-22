@@ -122,7 +122,7 @@ defmodule MicuPokerWeb.UserAuth do
   end
 
   defp post_login_path(%{"return_to" => path}) when is_binary(path) do
-    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
+    if safe_local_path?(path) do
       path
     else
       ~p"/lobby"
@@ -130,6 +130,19 @@ defmodule MicuPokerWeb.UserAuth do
   end
 
   defp post_login_path(_params), do: ~p"/lobby"
+
+  @doc """
+  Verifies that `path` is a strictly local relative path and cannot be
+  interpreted by browsers as a protocol-relative or backslash-normalized URL.
+  """
+  def safe_local_path?(path) when is_binary(path) do
+    String.starts_with?(path, "/") and
+      not String.starts_with?(path, "//") and
+      not String.starts_with?(path, "/\\") and
+      not String.contains?(path, ["\\", "\r", "\n", "\t", <<0>>])
+  end
+
+  def safe_local_path?(_path), do: false
 
   ## LiveView
 

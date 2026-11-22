@@ -37,9 +37,21 @@ defmodule MicuPokerWeb.UserSocket do
   end
 
   defp authenticate(_params, socket, %{session: session}) when is_map(session) do
-    case session["guest_user_id"] || session[:guest_user_id] do
-      nil -> :error
-      user_id -> assign_existing_user(socket, user_id)
+    token = session["user_token"] || session[:user_token]
+    guest_id = session["guest_user_id"] || session[:guest_user_id]
+
+    cond do
+      is_binary(token) ->
+        case Accounts.get_user_by_session_token(token) do
+          nil -> assign_existing_user(socket, guest_id)
+          user -> {:ok, assign(socket, :user_id, user.id)}
+        end
+
+      not is_nil(guest_id) ->
+        assign_existing_user(socket, guest_id)
+
+      true ->
+        :error
     end
   end
 

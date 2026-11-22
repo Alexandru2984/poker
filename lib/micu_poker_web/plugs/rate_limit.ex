@@ -87,8 +87,8 @@ defmodule MicuPokerWeb.Plugs.RateLimit do
   defp same_origin_path(referer) do
     uri = URI.parse(referer)
 
-    if uri.host in [nil, MicuPokerWeb.Endpoint.host()] and is_binary(uri.path) and
-         String.starts_with?(uri.path, "/") do
+    if uri.host in [nil, MicuPokerWeb.Endpoint.host()] and
+         MicuPokerWeb.UserAuth.safe_local_path?(uri.path) do
       uri.path
     end
   end

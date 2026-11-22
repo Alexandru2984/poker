@@ -172,6 +172,19 @@ defmodule MicuPokerWeb.AuthFlowTest do
         })
 
       assert redirected_to(external) == ~p"/lobby"
+
+      backslash_external =
+        conn
+        |> recycle()
+        |> post(~p"/login", %{
+          "user" => %{
+            "username" => "Signer",
+            "password" => @password,
+            "return_to" => "/\\evil.example.com/steal"
+          }
+        })
+
+      assert redirected_to(backslash_external) == ~p"/lobby"
     end
 
     test "a missing password does not raise", %{conn: conn} do
@@ -273,6 +286,7 @@ defmodule MicuPokerWeb.AuthFlowTest do
 
       assert redirected_to(success) == ~p"/lobby"
       assert RateLimiter.count({:login_user, "target"}, :timer.minutes(15)) == 0
+      assert RateLimiter.count({:login_ip, "203.0.113.41"}, :timer.minutes(15)) == 4
     end
   end
 end

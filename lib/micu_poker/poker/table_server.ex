@@ -280,9 +280,15 @@ defmodule MicuPoker.Poker.TableServer do
 
       player ->
         action = if call_amount(state, player) == 0, do: :check, else: :fold
-        {:ok, new_state} = apply_action(state, player.user_id, action, 0, true)
-        broadcast(new_state)
-        {:noreply, new_state}
+
+        case apply_action(state, player.user_id, action, 0, true) do
+          {:ok, new_state} ->
+            broadcast(new_state)
+            {:noreply, new_state}
+
+          {:error, _reason} ->
+            {:noreply, state}
+        end
     end
   end
 
@@ -716,12 +722,32 @@ defmodule MicuPoker.Poker.TableServer do
       )
 
     # Preflop action opens to the left of the big blind. Heads-up that wraps
-    # back to the button, who is also the small blind.
-    turn_index = rem(big_index + 1, length(players))
+    # back to the button, who is also the small blind. When a short stack goes
+    # all-in posting a blind, skip all-in seats or run out the board if no
+    # player owes a decision.
+    if preflop_all_in_runout?(state) do
+      state
+      |> return_uncalled_bet()
+      |> reveal_remaining_board()
+      |> showdown()
+      |> sync_room_status()
+    else
+      state
+      |> advance_turn(big.seat_number)
+      |> sync_room_status()
+    end
+  end
 
-    %{state | turn_seat: Enum.at(players, turn_index).seat_number}
-    |> schedule_timer()
-    |> sync_room_status()
+  defp preflop_all_in_runout?(state) do
+    remaining = active_players(state)
+    can_bet = Enum.filter(remaining, &can_still_bet?/1)
+    max_bet = remaining |> Enum.map(& &1.bet) |> Enum.max(fn -> 0 end)
+
+    case can_bet do
+      [] -> true
+      [sole_bettor] -> sole_bettor.bet >= max_bet
+      _multiple -> false
+    end
   end
 
   # Every street after the flop opens with the first live player to the left of

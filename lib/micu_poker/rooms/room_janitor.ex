@@ -24,6 +24,7 @@ defmodule MicuPoker.Rooms.RoomJanitor do
   def handle_info(:run, state) do
     Rooms.expire_stale_rooms()
     Accounts.delete_unused_guest_users()
+    Accounts.delete_expired_tokens()
     Process.send_after(self(), :run, interval_ms())
     {:noreply, state}
   end

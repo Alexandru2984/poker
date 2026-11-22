@@ -178,6 +178,90 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert Enum.all?(acting_player.cards, &Map.has_key?(&1, :label))
   end
 
+  test "showdown in a multi-way pot does not reveal a folded player's hole cards", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two,
+    user_three: user_three
+  } do
+    with_env("ACTION_RATE_LIMIT_MS", "0")
+    with_env("NEXT_HAND_DELAY_MS", "10")
+
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, _} = join_connected(room, user_two)
+    assert {:ok, _} = join_connected(room, user_three)
+
+    # Finish the initial 2-handed hand so hand #2 deals all three players in.
+    first_hand_actor = acting_user_id(room, [user_one, user_two])
+    assert :ok = TableServer.act(room.id, first_hand_actor, "fold", 0)
+    Process.sleep(30)
+
+    assert TableServer.state(room.id).stage == :preflop
+    assert Enum.count(TableServer.state(room.id).players, & &1.in_hand) == 3
+
+    users = [user_one, user_two, user_three]
+    folded_user_id = acting_user_id(room, users)
+    assert :ok = TableServer.act(room.id, folded_user_id, "fold", 0)
+
+    # Remaining two players move all-in to force an immediate showdown.
+    second_actor = acting_user_id(room, users)
+    assert :ok = TableServer.act(room.id, second_actor, "all_in", 0)
+
+    state_after_first_all_in = TableServer.state(room.id)
+
+    if state_after_first_all_in.stage != :showdown do
+      third_actor = acting_user_id(room, users)
+      assert :ok = TableServer.act(room.id, third_actor, "call", 0)
+    end
+
+    public_view = TableServer.state(room.id, nil)
+    assert public_view.stage == :showdown
+
+    # Active showdown contenders reveal their cards, but the player who folded
+    # preflop must keep their cards hidden from everyone else.
+    for contender_id <- Enum.map(users, & &1.id) -- [folded_user_id] do
+      viewer_state = TableServer.state(room.id, contender_id)
+
+      folded_in_view =
+        Enum.find(viewer_state.players, & &1.folded)
+
+      assert Enum.all?(folded_in_view.cards, &(&1 == %{hidden: true}))
+      assert folded_in_view.hand_summary == nil
+    end
+  end
+
+  test "short stack going all-in on blinds runs out without crashing on turn timeout", %{
+    user_one: user_one,
+    user_two: user_two
+  } do
+    {:ok, short_room} =
+      Rooms.create_room(
+        %{
+          "name" => "Short Blind Room",
+          "max_players" => "2",
+          "small_blind" => "50",
+          "big_blind" => "100",
+          "starting_chips" => "100"
+        },
+        user_one.id
+      )
+
+    {:ok, rp1} = Rooms.seat_user(short_room, user_one.id)
+    {:ok, _rp2} = Rooms.seat_user(short_room, user_two.id)
+
+    # Set player 1's stack to 40 (below small blind) before starting the table.
+    rp1 |> Ecto.Changeset.change(stack: 40) |> Repo.update!()
+
+    assert {:ok, _pid} = TableSupervisor.ensure_table(short_room.id)
+    assert {:ok, _} = TableServer.connect(short_room.id, user_one.id, make_ref())
+    assert {:ok, state} = TableServer.connect(short_room.id, user_two.id, make_ref())
+
+    # If SB went all-in for 40 and BB posted 100, no further action is needed;
+    # or if BB went all-in for 40 and SB posted 50, no further action is needed.
+    assert state.stage == :showdown
+    assert length(state.board) == 5
+  end
+
   test "only the user whose turn it is receives valid turn actions", %{
     room: room,
     user_one: user_one,

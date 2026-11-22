@@ -1,18 +1,31 @@
 defmodule MicuPokerWeb.TableChannel do
   use Phoenix.Channel
 
+  alias MicuPoker.RateLimiter
   alias MicuPoker.Rooms
   alias MicuPoker.Poker.{TableServer, TableSupervisor}
 
+  @join_limit 30
+  @join_window_ms 60_000
+
   @impl true
   def join("table:" <> room_id, _payload, socket) do
-    with {:ok, room} <- Rooms.fetch_room(room_id),
+    with :ok <- allow_join(socket.assigns.user_id),
+         {:ok, room} <- Rooms.fetch_room(room_id),
          :ok <- authorize_room(room, socket.assigns.user_id),
          {:ok, _pid} <- TableSupervisor.ensure_table(room.id) do
       join_table(room.id, socket)
     else
+      {:error, :rate_limited} -> {:error, %{reason: "rate_limited"}}
       {:error, :locked} -> {:error, %{reason: "room_locked"}}
       _error -> {:error, %{reason: "room_not_found"}}
+    end
+  end
+
+  defp allow_join(user_id) do
+    case RateLimiter.hit({:channel_join, user_id}, @join_limit, @join_window_ms) do
+      {:allow, _} -> :ok
+      {:deny, _} -> {:error, :rate_limited}
     end
   end
 

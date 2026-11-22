@@ -5,6 +5,7 @@ defmodule MicuPokerWeb.LobbyLiveTest do
 
   alias MicuPoker.Accounts
   alias MicuPoker.Accounts.User
+  alias MicuPoker.RateLimiter
   alias MicuPoker.Repo
 
   test "lobby creates a guest session lazily", %{conn: conn} do
@@ -54,6 +55,40 @@ defmodule MicuPokerWeb.LobbyLiveTest do
     assert html =~ ~s(value="15")
     assert html =~ ~s(name="room[big_blind]")
     assert html =~ ~s(value="30")
+  end
+
+  test "lobby rate limits rapid room creation over LiveView websocket", %{conn: conn} do
+    previous = Application.get_env(:micu_poker, :rate_limiting_enabled, true)
+    Application.put_env(:micu_poker, :rate_limiting_enabled, true)
+    RateLimiter.clear_all()
+
+    on_exit(fn ->
+      Application.put_env(:micu_poker, :rate_limiting_enabled, previous)
+      RateLimiter.clear_all()
+    end)
+
+    {:ok, user} = Accounts.create_guest_user()
+    conn = Plug.Test.init_test_session(conn, guest_user_id: user.id)
+
+    results =
+      for idx <- 1..12 do
+        {:ok, view, _html} = live(conn, ~p"/lobby")
+
+        render_submit(view, :create_room, %{
+          "room" => %{
+            "name" => "Spam Room #{idx}",
+            "max_players" => "6",
+            "starting_chips" => "1000",
+            "small_blind" => "5",
+            "big_blind" => "10"
+          }
+        })
+      end
+
+    assert Enum.any?(results, fn
+             {:error, {:live_redirect, _}} -> false
+             html when is_binary(html) -> html =~ "too quickly"
+           end)
   end
 
   defp with_env(values) do

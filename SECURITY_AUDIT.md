@@ -1,12 +1,57 @@
 # MicuPoker Security Audit
 
-Second full pass. Supersedes the 2026-05-31 audit, whose findings are all fixed
-and are summarised at the bottom.
+Third full pass (2026-11-22). Supersedes the 2026-08-07 and 2026-05-31 audits,
+whose findings are all fixed and are summarised below.
 
-Date: 2026-08-07
+Date: 2026-11-22
 Scope: application code, the realtime layer, card privacy, action validation,
-authentication, the reverse proxy, the systemd sandbox, and the play-money
-constraint.
+authentication, rate limiting across HTTP and WebSockets, the reverse proxy,
+the systemd sandbox, and the play-money constraint.
+
+## 2026-11-22 audit findings and fixes
+
+- **Critical — Folded hole cards were disclosed at multi-way showdown.**
+  `TableState.player_public/3` checked `state.stage == :showdown` without
+  requiring `player.in_hand and not player.folded`. In any 3+ player hand where
+  one player folded and two others reached showdown, the folded player's hole
+  cards and hand summary were exposed to all players and spectators. Fixed in
+  `TableState.player_public/3` so showdown only reveals active, un-folded
+  contenders (or cards a player explicitly chose to reveal).
+- **High — LiveView room creation and rename bypassed rate limiting and allowed
+  PBKDF2 CPU exhaustion.** While `POST /rooms` was rate limited in the router,
+  `LobbyLive.handle_event("create_room", ...)` and `"rename"` over the LiveView
+  WebSocket had no rate limit. An attacker could exhaust `MAX_ROOMS` or submit
+  password-protected room creations in a tight loop to trigger 210,000-iteration
+  PBKDF2-SHA512 hashes synchronously. Fixed by enforcing `MicuPoker.RateLimiter`
+  inside `LobbyLive` and `TableChannel.join/3`.
+- **High — Login IP rate limit could be reset by signing into an attacker's own
+  account.** `SessionController.reset_rate/2` cleared both `{:login_user, user}`
+  and `{:login_ip, ip}` on any valid login, allowing an attacker to spray 9
+  failed attempts against victims and reset the IP counter on the 10th request
+  by logging into their own account. Fixed by resetting only the per-username
+  bucket on sign-in.
+- **High — Short-stack all-in blind posting could crash `TableServer` on turn
+  timeout.** When a short stack went all-in posting a blind, `start_hand/1`
+  assigned `turn_seat` without checking if the player could still act or if the
+  hand was already effectively all-in, and `@timeout_tick` pattern-matched
+  `{:ok, new_state} = apply_action(...)`. Fixed by detecting preflop all-in
+  runouts immediately, advancing turn to the first actionable player, and
+  handling timeout errors gracefully.
+- **Medium — Private room password unlock lacked a dedicated per-room limit.**
+  Added a dedicated `{:room_unlock, ip, room_id}` budget (5 attempts per 5
+  minutes) in `RoomController.submit_unlock/2`.
+- **Medium — Open redirect validation accepted backslash-prefixed paths
+  (`/\evil.com`) and control characters.** Hardened `UserAuth.safe_local_path?/1`
+  and applied it across `UserAuth`, `SessionController`, and `Plugs.RateLimit`.
+- **Medium — `UserSocket` session fallback ignored signed-in account tokens.**
+  Updated `UserSocket.authenticate/3` to verify `user_token` from the session
+  before falling back to `guest_user_id`.
+- **Medium — Active tables were not touching `rooms.updated_at` on hand
+  completion and `RoomPlayer` rejected seat 10.** `Rooms.persist_hand_result/4`
+  now touches `rooms.updated_at` in the hand settlement transaction so
+  `RoomJanitor` never expires an active table after 4 hours, `RoomJanitor` now
+  purges expired `user_tokens`, and `RoomPlayer.changeset/2` allows up to 10
+  seats to match `Room.max_players/0`.
 
 Production isolation follow-up: 2026-10-12
 

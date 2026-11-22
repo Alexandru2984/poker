@@ -23,6 +23,10 @@ defmodule MicuPokerWeb.ProfileCalculatorLiveTest do
     # Clear cards resets to 0/2 hole cards
     cleared_html = render_click(view, :clear_cards, %{})
     assert cleared_html =~ "Picking Hole Cards (0/2)"
+
+    # Selecting a combo from the 13x13 preflop matrix loads those hole cards
+    matrix_html = render_click(view, :select_matrix_hand, %{"r1" => "14", "r2" => "14"})
+    assert matrix_html =~ "Pocket pair"
   end
 
   test "GET /profile shows career stats, fictional ledger history, and allows display name update",

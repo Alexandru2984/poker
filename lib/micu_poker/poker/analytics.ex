@@ -51,6 +51,48 @@ defmodule MicuPoker.Poker.Analytics do
   def stack_bb(_stack, _big_blind), do: 0.0
 
   @doc """
+  Generates the 13x13 (169-cell) Texas Hold'em preflop starting hand matrix.
+  Above diagonal = suited, diagonal = pocket pairs, below diagonal = offsuit.
+  """
+  def preflop_matrix do
+    ranks = Enum.to_list(14..2//-1)
+
+    for r1 <- ranks do
+      for r2 <- ranks do
+        high = max(r1, r2)
+        low = min(r1, r2)
+
+        {kind, label, sample_cards} =
+          cond do
+            r1 == r2 ->
+              {:pair, "#{Card.rank_label(r1)}#{Card.rank_label(r2)}",
+               [%Card{rank: r1, suit: :spades}, %Card{rank: r2, suit: :hearts}]}
+
+            r1 > r2 ->
+              {:suited, "#{Card.rank_label(high)}#{Card.rank_label(low)}s",
+               [%Card{rank: high, suit: :spades}, %Card{rank: low, suit: :spades}]}
+
+            true ->
+              {:offsuit, "#{Card.rank_label(high)}#{Card.rank_label(low)}o",
+               [%Card{rank: high, suit: :spades}, %Card{rank: low, suit: :hearts}]}
+          end
+
+        strength = preflop_strength(sample_cards)
+
+        %{
+          r1: r1,
+          r2: r2,
+          kind: kind,
+          label: label,
+          equity: strength.equity,
+          tier: strength.tier,
+          tier_class: "tier-" <> String.downcase(strength.tier)
+        }
+      end
+    end
+  end
+
+  @doc """
   Builds the complete simulator HUD analytics for a player's current spot.
   """
   def evaluate_spot(hole_cards, board_cards, pot, call_amount, stack, big_blind) do

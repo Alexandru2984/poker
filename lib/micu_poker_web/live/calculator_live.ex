@@ -18,6 +18,7 @@ defmodule MicuPokerWeb.CalculatorLive do
      socket
      |> assign(:page_title, "Poker Odds & Hand Evaluator Calculator")
      |> assign(:full_deck, full_deck)
+     |> assign(:preflop_matrix, Analytics.preflop_matrix())
      |> assign(:target_slot, "board")
      |> assign(:hole_cards, hole)
      |> assign(:board_cards, board)
@@ -31,6 +32,32 @@ defmodule MicuPokerWeb.CalculatorLive do
   @impl true
   def handle_event("set_target", %{"target" => target}, socket) when target in ~w(hole board) do
     {:noreply, assign(socket, :target_slot, target)}
+  end
+
+  def handle_event("select_matrix_hand", %{"r1" => r1_str, "r2" => r2_str}, socket) do
+    with {r1, ""} when r1 in 2..14 <- Integer.parse(to_string(r1_str)),
+         {r2, ""} when r2 in 2..14 <- Integer.parse(to_string(r2_str)) do
+      high = max(r1, r2)
+      low = min(r1, r2)
+
+      hole =
+        if r1 > r2 do
+          [%Card{rank: high, suit: :spades}, %Card{rank: low, suit: :spades}]
+        else
+          [%Card{rank: high, suit: :spades}, %Card{rank: low, suit: :hearts}]
+        end
+
+      # Remove any conflicting cards from the board
+      board = Enum.reject(socket.assigns.board_cards, &(&1 in hole))
+
+      {:noreply,
+       socket
+       |> assign(:hole_cards, hole)
+       |> assign(:board_cards, board)
+       |> recompute()}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event("toggle_card", %{"rank" => rank_str, "suit" => suit_str}, socket) do
@@ -346,6 +373,29 @@ defmodule MicuPokerWeb.CalculatorLive do
                   <span class="card-rank">{card.rank_label}</span>
                   <span class="card-suit">{card.suit_symbol}</span>
                 </button>
+              <% end %>
+            </div>
+
+            <h3 class="eyebrow" style="margin-top: 18px;">
+              13&times;13 Preflop Starting Hand Matrix (Tap Any Combo to Load)
+            </h3>
+            <p class="muted-note">
+              Diagonal: Pocket Pairs &middot; Upper-right: Suited &middot; Lower-left: Offsuit
+            </p>
+            <div class="preflop-matrix">
+              <%= for row <- @preflop_matrix do %>
+                <%= for cell <- row do %>
+                  <button
+                    type="button"
+                    phx-click="select_matrix_hand"
+                    phx-value-r1={cell.r1}
+                    phx-value-r2={cell.r2}
+                    class={["matrix-cell", cell.tier_class]}
+                    title={"#{cell.label} · #{cell.tier} (#{cell.equity}% est. equity)"}
+                  >
+                    {cell.label}
+                  </button>
+                <% end %>
               <% end %>
             </div>
           </div>

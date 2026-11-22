@@ -103,6 +103,21 @@ defmodule MicuPokerWeb.ProfileLive do
     end
   end
 
+  def handle_event("revoke_sessions", _params, socket) do
+    user = socket.assigns.current_user
+
+    if user.is_guest do
+      {:noreply, put_flash(socket, :error, "Guest seats only exist in the current cookie.")}
+    else
+      Accounts.delete_all_session_tokens(user)
+
+      {:noreply,
+       socket
+       |> put_flash(:info, "All active session tokens have been revoked. Please sign in again.")
+       |> redirect(to: ~p"/login")}
+    end
+  end
+
   defp first_error(changeset) do
     changeset.errors
     |> Enum.map(fn
@@ -237,6 +252,19 @@ defmodule MicuPokerWeb.ProfileLive do
               />
               <button type="submit">Update Password</button>
             </.form>
+
+            <h2>Session Security</h2>
+            <p class="range">
+              Sign out of every browser and device currently logged into this account.
+            </p>
+            <button
+              type="button"
+              phx-click="revoke_sessions"
+              class="danger-btn"
+              style="width: 100%; margin-top: 10px;"
+            >
+              Revoke All Active Sessions
+            </button>
           <% end %>
         </aside>
 

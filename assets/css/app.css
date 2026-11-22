@@ -1972,3 +1972,50 @@ button.primary:hover:not(:disabled) {
 .preset-row {
   grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
 }
+
+.preflop-matrix {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 3px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.matrix-cell {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 0 2px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.matrix-cell.tier-premium {
+  background: rgba(224, 176, 84, 0.25);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.matrix-cell.tier-strong {
+  background: rgba(63, 191, 135, 0.2);
+  border-color: rgba(63, 191, 135, 0.55);
+  color: #a4f0cd;
+}
+
+.matrix-cell.tier-playable {
+  background: rgba(56, 139, 253, 0.16);
+  border-color: rgba(56, 139, 253, 0.45);
+  color: #b5d4ff;
+}
+
+.matrix-cell.tier-speculative {
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.matrix-cell.tier-marginal {
+  background: #0b0e15;
+  border-color: var(--line-soft);
+  color: var(--faint);
+}

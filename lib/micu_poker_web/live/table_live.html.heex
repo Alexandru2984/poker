@@ -406,6 +406,14 @@
                   </button>
                   <button
                     type="button"
+                    phx-click="dealer_double_blinds"
+                    disabled={@table.stage not in [:waiting, :complete, :showdown]}
+                    title="Double small and big blinds for tournament escalation"
+                  >
+                    ⬆ Double Blinds (2x)
+                  </button>
+                  <button
+                    type="button"
                     phx-click="dealer_reset_stacks"
                     disabled={@table.stage not in [:waiting, :complete, :showdown]}
                   >
@@ -731,6 +739,39 @@
         </button>
       </div>
     <% else %>
+      <%= if can_pre_act?(@table, @current_user.id) do %>
+        <% hero_pre = current_player(@table, @current_user.id) %>
+        <% to_call = max(@table.current_bet - ((hero_pre && hero_pre.bet) || 0), 0) %>
+        <div class="pre-action-row" role="group" aria-label="Pre-select turn action">
+          <button
+            type="button"
+            phx-click="pre_action"
+            phx-value-mode="check_fold"
+            class={@pre_action == "check_fold" && "active"}
+          >
+            {if @pre_action == "check_fold", do: "✓ ", else: ""}Check / Fold
+          </button>
+          <button
+            type="button"
+            phx-click="pre_action"
+            phx-value-mode="check"
+            disabled={to_call > 0}
+            class={@pre_action == "check" && "active"}
+          >
+            {if @pre_action == "check", do: "✓ ", else: ""}Auto Check
+          </button>
+          <button
+            type="button"
+            phx-click="pre_action"
+            phx-value-mode="call"
+            class={@pre_action == "call" && "active"}
+          >
+            {if @pre_action == "call", do: "✓ ", else: ""}{if to_call > 0,
+              do: "Auto Call #{to_call}",
+              else: "Auto Check/Call"}
+          </button>
+        </div>
+      <% end %>
       <p class="action-idle">
         {waiting_message(@table, @current_user.id)}
       </p>

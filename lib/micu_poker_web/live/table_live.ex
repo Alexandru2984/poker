@@ -95,6 +95,8 @@ defmodule MicuPokerWeb.TableLive do
      |> assign(:recent_hands, [])
      |> assign(:expanded_hand_id, nil)
      |> assign(:expanded_hand_actions, [])
+     |> assign(:pre_action, nil)
+     |> assign(:pre_action_bet, 0)
      |> assign(:chat_message, "")
      |> put_table(table)}
   end
@@ -108,11 +110,69 @@ defmodule MicuPokerWeb.TableLive do
         player -> player.seat_number
       end
 
-    socket
-    |> assign(:table, table)
-    |> assign(:seats, TableLayout.seats(table, viewer_seat))
-    |> assign(:bet_presets, TableLayout.bet_presets(table))
-    |> assign(:bet_amount, clamp_bet_amount(socket.assigns[:bet_amount], table, table.room))
+    socket =
+      socket
+      |> assign(:table, table)
+      |> assign(:seats, TableLayout.seats(table, viewer_seat))
+      |> assign(:bet_presets, TableLayout.bet_presets(table))
+      |> assign(:bet_amount, clamp_bet_amount(socket.assigns[:bet_amount], table, table.room))
+
+    maybe_execute_pre_action(socket, table)
+  end
+
+  defp maybe_execute_pre_action(socket, table) do
+    pre = socket.assigns[:pre_action]
+    user = socket.assigns[:current_user]
+
+    cond do
+      is_nil(pre) or is_nil(user) ->
+        socket
+
+      table.stage not in [:preflop, :flop, :turn, :river] ->
+        socket |> assign(:pre_action, nil) |> assign(:pre_action_bet, 0)
+
+      my_turn?(table, user.id) ->
+        valid = table.valid_actions.actions
+        locked_bet = socket.assigns[:pre_action_bet] || 0
+        socket = socket |> assign(:pre_action, nil) |> assign(:pre_action_bet, 0)
+
+        auto_action =
+          case pre do
+            "check_fold" ->
+              if :check in valid, do: "check", else: "fold"
+
+            "check" ->
+              if :check in valid, do: "check", else: nil
+
+            "call" ->
+              cond do
+                :check in valid -> "check"
+                :call in valid and table.current_bet <= locked_bet -> "call"
+                true -> nil
+              end
+
+            _ ->
+              nil
+          end
+
+        if auto_action do
+          case TableServer.act(socket.assigns.room_id, user.id, auto_action, 0) do
+            :ok ->
+              case TableServer.state(socket.assigns.room_id, user.id) do
+                nil -> socket
+                updated -> put_table(socket, updated)
+              end
+
+            {:error, _} ->
+              socket
+          end
+        else
+          socket
+        end
+
+      true ->
+        socket
+    end
   end
 
   @impl true
@@ -151,6 +211,48 @@ defmodule MicuPokerWeb.TableLive do
 
   def handle_event("toggle_bb_view", _params, socket) do
     {:noreply, assign(socket, :bb_view, not socket.assigns.bb_view)}
+  end
+
+  def handle_event("pre_action", %{"mode" => mode}, socket)
+      when mode in ~w(check_fold check call clear) do
+    if mode == "clear" or socket.assigns.pre_action == mode do
+      {:noreply, socket |> assign(:pre_action, nil) |> assign(:pre_action_bet, 0)}
+    else
+      {:noreply,
+       socket
+       |> assign(:pre_action, mode)
+       |> assign(:pre_action_bet, socket.assigns.table.current_bet)}
+    end
+  end
+
+  def handle_event("dealer_double_blinds", _params, socket) do
+    room = socket.assigns.table.room
+    new_sb = min(room.small_blind * 2, 1000)
+    new_bb = min(max(room.big_blind * 2, new_sb * 2), 2000)
+    new_buyin = max(room.starting_chips, new_bb * 20) |> min(100_000)
+
+    settings = %{
+      "small_blind" => to_string(new_sb),
+      "big_blind" => to_string(new_bb),
+      "starting_chips" => to_string(new_buyin),
+      "currency" => room.currency
+    }
+
+    case TableServer.dealer_update_table(
+           socket.assigns.room_id,
+           socket.assigns.current_user.id,
+           settings
+         ) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> assign(:room, Rooms.get_room!(socket.assigns.room_id))
+         |> put_table(table)
+         |> put_flash(:info, "Blinds escalated to #{new_sb}/#{new_bb}.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
   end
 
   def handle_event("time_bank", _params, socket) do
@@ -506,6 +608,17 @@ defmodule MicuPokerWeb.TableLive do
   defp can_show_cards?(hero, table) do
     length(hero.cards) == 2 and not Map.get(hero, :revealed_cards, false) and
       (table.stage in [:complete, :showdown] or hero.folded)
+  end
+
+  defp can_pre_act?(table, user_id) do
+    case current_player(table, user_id) do
+      nil ->
+        false
+
+      hero ->
+        table.stage in [:preflop, :flop, :turn, :river] and hero.in_hand and not hero.folded and
+          not hero.all_in and not my_turn?(table, user_id)
+    end
   end
 
   # Drives the shrinking ring around the seat that is on the clock.

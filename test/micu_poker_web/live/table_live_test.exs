@@ -238,5 +238,53 @@ defmodule MicuPokerWeb.TableLiveTest do
     # Toggle BB view
     bb_html = render_click(view, :toggle_bb_view, %{})
     assert bb_html =~ "200.0 BB"
+
+    # Double blinds (5/10 -> 10/20)
+    doubled_html = render_click(view, :dealer_double_blinds, %{})
+    assert doubled_html =~ "10/20"
+  end
+
+  test "waiting player can queue pre-action check_fold before their turn arrives", %{conn: conn} do
+    {:ok, user_one} = Accounts.create_guest_user()
+    {:ok, user_two} = Accounts.create_guest_user()
+
+    {:ok, room} =
+      Rooms.create_room(
+        %{
+          "name" => "Pre Action Room",
+          "max_players" => "2",
+          "small_blind" => "5",
+          "big_blind" => "10",
+          "starting_chips" => "1000"
+        },
+        user_one.id
+      )
+
+    start_supervised!({TableServer, room.id})
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, _} = join_connected(room, user_two)
+
+    waiting_user =
+      Enum.find([user_one, user_two], fn user ->
+        TableServer.state(room.id, user.id).valid_actions.actions == []
+      end)
+
+    acting_user =
+      Enum.find([user_one, user_two], fn user ->
+        user.id != waiting_user.id
+      end)
+
+    conn = Plug.Test.init_test_session(conn, guest_user_id: waiting_user.id)
+    {:ok, view, html} = live(conn, ~p"/rooms/#{room.id}")
+
+    assert html =~ "Check / Fold"
+
+    queued_html = render_click(view, :pre_action, %{"mode" => "check_fold"})
+    assert queued_html =~ "✓ Check / Fold"
+
+    # When the acting player calls, the turn passes to waiting_user and pre_action auto-checks!
+    assert :ok = TableServer.act(room.id, acting_user.id, "call", 0)
+    _after_html = render(view)
+    assert TableServer.state(room.id).stage == :flop
   end
 end

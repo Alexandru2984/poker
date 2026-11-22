@@ -86,7 +86,7 @@ defmodule MicuPokerWeb.TableChannel do
   end
 
   def handle_in("seat", %{"command" => command}, socket)
-      when command in ~w(sit_out sit_in rebuy show_cards) do
+      when command in ~w(sit_out sit_in rebuy show_cards time_bank) do
     room_id = socket.assigns.room_id
     user_id = socket.assigns.user_id
 
@@ -96,6 +96,7 @@ defmodule MicuPokerWeb.TableChannel do
         "sit_in" -> TableServer.sit_in(room_id, user_id)
         "rebuy" -> TableServer.rebuy(room_id, user_id)
         "show_cards" -> TableServer.show_cards(room_id, user_id)
+        "time_bank" -> TableServer.use_time_bank(room_id, user_id)
       end
 
     case reply do

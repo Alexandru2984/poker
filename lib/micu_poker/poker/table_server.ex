@@ -85,6 +85,9 @@ defmodule MicuPoker.Poker.TableServer do
   def switch_seat(room_id, user_id, seat_number),
     do: call(room_id, {:switch_seat, user_id, seat_number})
 
+  def use_time_bank(room_id, user_id),
+    do: call(room_id, {:use_time_bank, user_id})
+
   def react(room_id, user_id, code),
     do: call(room_id, {:react, user_id, code})
 
@@ -483,6 +486,7 @@ defmodule MicuPoker.Poker.TableServer do
         is_bot: true,
         bot_profile: profile_code,
         revealed_cards: false,
+        time_bank_used: false,
         reaction: nil
       }
 
@@ -578,6 +582,43 @@ defmodule MicuPoker.Poker.TableServer do
       broadcast(new_state)
       {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
     else
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:use_time_bank, user_id}, _from, state) do
+    with {:ok, player} <- seated_player(state, user_id),
+         :ok <- validate_connected(player),
+         :ok <- validate_turn(state, player),
+         false <- Map.get(player, :time_bank_used, false) do
+      extra_seconds = int_env("TIME_BANK_SECONDS", 20, min: 5, max: 120)
+      now = DateTime.utc_now(:second)
+
+      current_remaining =
+        case state.action_deadline do
+          %DateTime{} = dl -> max(DateTime.diff(dl, now, :second), 0)
+          _ -> 0
+        end
+
+      total_seconds = current_remaining + extra_seconds
+      state = cancel_timer(state)
+      token = make_ref()
+      timer_ref = Process.send_after(self(), {@timeout_tick, token}, total_seconds * 1_000)
+
+      new_state =
+        %{
+          state
+          | timer_ref: {timer_ref, token},
+            action_deadline: DateTime.add(now, total_seconds, :second)
+        }
+        |> update_player(user_id, &Map.put(&1, :time_bank_used, true))
+        |> add_log("#{player.username} used +#{extra_seconds}s time bank.")
+        |> touch()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
+    else
+      true -> {:reply, {:error, :time_bank_already_used}, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
@@ -1155,6 +1196,7 @@ defmodule MicuPoker.Poker.TableServer do
             leaving: false,
             in_hand: true,
             revealed_cards: false,
+            time_bank_used: false,
             reaction: nil
         }
       end)
@@ -1557,6 +1599,7 @@ defmodule MicuPoker.Poker.TableServer do
         is_bot: bot?,
         bot_profile: if(bot?, do: "balanced", else: nil),
         revealed_cards: false,
+        time_bank_used: false,
         reaction: nil
       }
     end)

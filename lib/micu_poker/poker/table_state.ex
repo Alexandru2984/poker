@@ -81,6 +81,7 @@ defmodule MicuPoker.Poker.TableState do
       is_bot: Map.get(player, :is_bot, false),
       bot_profile: Map.get(player, :bot_profile, nil),
       revealed_cards: Map.get(player, :revealed_cards, false),
+      time_bank_used: Map.get(player, :time_bank_used, false),
       reaction: Map.get(player, :reaction, nil),
       disconnect_deadline: player.disconnect_deadline,
       hand_summary: if(show_cards?, do: HandSummary.summarize(player.cards, board), else: nil),

@@ -1842,3 +1842,52 @@ button.primary:hover:not(:disabled) {
   min-height: 38px;
   font-size: 13px;
 }
+
+.time-bank-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+  border-color: var(--gold-dim);
+  color: var(--gold);
+}
+
+.hand-replay-btn {
+  margin-top: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 11px;
+  width: 100%;
+}
+
+.hand-replay-timeline {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.hand-replay-timeline p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.replay-street {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.replay-amount {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}

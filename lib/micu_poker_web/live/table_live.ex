@@ -93,6 +93,8 @@ defmodule MicuPokerWeb.TableLive do
      |> assign(:bb_view, false)
      |> assign(:currencies, MicuPoker.Rooms.Room.currencies())
      |> assign(:recent_hands, [])
+     |> assign(:expanded_hand_id, nil)
+     |> assign(:expanded_hand_actions, [])
      |> assign(:chat_message, "")
      |> put_table(table)}
   end
@@ -149,6 +151,44 @@ defmodule MicuPokerWeb.TableLive do
 
   def handle_event("toggle_bb_view", _params, socket) do
     {:noreply, assign(socket, :bb_view, not socket.assigns.bb_view)}
+  end
+
+  def handle_event("time_bank", _params, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.use_time_bank(room_id, user_id) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "+20s Time Bank activated.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, human_error(reason))}
+    end
+  end
+
+  def handle_event("inspect_hand", %{"hand-id" => hand_id_str}, socket) do
+    case Integer.parse(to_string(hand_id_str)) do
+      {hand_id, ""} when hand_id > 0 ->
+        if socket.assigns.expanded_hand_id == hand_id do
+          {:noreply,
+           socket
+           |> assign(:expanded_hand_id, nil)
+           |> assign(:expanded_hand_actions, [])}
+        else
+          actions = Stats.hand_actions(socket.assigns.room_id, hand_id)
+
+          {:noreply,
+           socket
+           |> assign(:expanded_hand_id, hand_id)
+           |> assign(:expanded_hand_actions, actions)}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("dealer_grant", %{"seat" => seat, "amount" => amount}, socket) do
@@ -520,6 +560,7 @@ defmodule MicuPokerWeb.TableLive do
   defp human_error(:room_full), do: "table has no open seats left"
   defp human_error(:seat_taken), do: "that seat is already occupied"
   defp human_error(:invalid_seat), do: "choose a valid seat number"
+  defp human_error(:time_bank_already_used), do: "time bank already used in this hand"
   defp human_error(reason), do: to_string(reason)
 
   defp clamp_bet_amount(amount, table, room) do

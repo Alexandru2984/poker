@@ -73,6 +73,7 @@ defmodule MicuPoker.Stats do
       order_by: [desc: hand.hand_number],
       limit: ^limit,
       select: %{
+        id: hand.id,
         hand_number: hand.hand_number,
         ended_at: hand.ended_at,
         pot_total: hand.pot_total,
@@ -83,6 +84,30 @@ defmodule MicuPoker.Stats do
     |> Repo.all()
     |> Enum.map(&normalize_hand/1)
   end
+
+  @doc """
+  Street-by-street actions for a finished hand in `room_id`, in chronological order.
+  """
+  def hand_actions(room_id, hand_id) when is_integer(room_id) and is_integer(hand_id) do
+    from(action in HandAction,
+      join: hand in Hand,
+      on: hand.id == action.hand_id,
+      left_join: user in User,
+      on: user.id == action.user_id,
+      where: hand.room_id == ^room_id and hand.id == ^hand_id and not is_nil(hand.ended_at),
+      order_by: [asc: action.id],
+      select: %{
+        id: action.id,
+        street: action.street,
+        action: action.action,
+        amount: action.amount,
+        username: coalesce(user.username, "Player")
+      }
+    )
+    |> Repo.all()
+  end
+
+  def hand_actions(_room_id, _hand_id), do: []
 
   defp normalize_hand(hand) do
     %{

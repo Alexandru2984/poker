@@ -159,6 +159,17 @@
         <%= if @table.action_deadline do %>
           <span class="turn-clock">{seconds_left(@table, @now)}s</span>
         <% end %>
+        <% hero_turn_player = current_player(@table, @current_user.id) %>
+        <%= if my_turn?(@table, @current_user.id) and not is_nil(hero_turn_player) and not Map.get(hero_turn_player, :time_bank_used, false) do %>
+          <button
+            type="button"
+            phx-click="time_bank"
+            class="time-bank-btn"
+            title="Add 20 seconds to your decision clock (1 per hand)"
+          >
+            +20s Time
+          </button>
+        <% end %>
       </div>
     </section>
 
@@ -343,6 +354,37 @@
                       <strong>{winner["username"]}</strong>
                       won {winner["amount"]} {@table.room.currency} with {winner["hand"]}
                     </p>
+                  <% end %>
+                  <%= if Map.get(hand, :id) do %>
+                    <button
+                      type="button"
+                      phx-click="inspect_hand"
+                      phx-value-hand-id={hand.id}
+                      class="hand-replay-btn"
+                    >
+                      {if @expanded_hand_id == hand.id,
+                        do: "Hide Street Replay",
+                        else: "Inspect Street Replay"}
+                    </button>
+                    <%= if @expanded_hand_id == hand.id do %>
+                      <div class="hand-replay-timeline">
+                        <%= for item <- @expanded_hand_actions do %>
+                          <p>
+                            <span class="replay-street">{String.upcase(item.street)}</span>
+                            <strong>{item.username}</strong>
+                            <span>{item.action}</span>
+                            <%= if item.amount > 0 do %>
+                              <span class="replay-amount">
+                                {item.amount} {@table.room.currency}
+                              </span>
+                            <% end %>
+                          </p>
+                        <% end %>
+                        <%= if @expanded_hand_actions == [] do %>
+                          <p class="muted-note">No actions recorded for this hand.</p>
+                        <% end %>
+                      </div>
+                    <% end %>
                   <% end %>
                 </article>
               <% end %>

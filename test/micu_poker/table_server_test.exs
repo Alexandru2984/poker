@@ -767,6 +767,35 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert {:error, :invalid_seat} = TableServer.switch_seat(room.id, user_one.id, 99)
   end
 
+  test "acting player can activate turn time bank once per hand and inspect finished hand replay",
+       %{
+         room: room,
+         user_one: user_one,
+         user_two: user_two
+       } do
+    assert {:ok, _} = join_connected(room, user_one)
+    assert {:ok, _} = join_connected(room, user_two)
+
+    actor_id = acting_user_id(room, [user_one, user_two])
+    other_id = Enum.find([user_one.id, user_two.id], &(&1 != actor_id))
+
+    before_state = TableServer.state(room.id, actor_id)
+    assert {:error, :not_your_turn} = TableServer.use_time_bank(room.id, other_id)
+
+    assert {:ok, extended_state} = TableServer.use_time_bank(room.id, actor_id)
+    assert DateTime.diff(extended_state.action_deadline, before_state.action_deadline) >= 18
+    assert own_player(extended_state).time_bank_used == true
+
+    # Second time bank in the same hand is refused
+    assert {:error, :time_bank_already_used} = TableServer.use_time_bank(room.id, actor_id)
+
+    assert :ok = TableServer.act(room.id, actor_id, "fold", 0)
+
+    [recent_hand | _] = MicuPoker.Stats.recent_hands(room.id, 5)
+    actions = MicuPoker.Stats.hand_actions(room.id, recent_hand.id)
+    assert [%{action: "fold", street: "preflop"}] = actions
+  end
+
   defp create_test_room(user, name, spectator_enabled) do
     Rooms.create_room(
       %{

@@ -47,13 +47,30 @@ defmodule MicuPoker.Rooms do
         {:error, Changeset.add_error(changeset, :base, "maximum active rooms reached")}
 
       true ->
-        Repo.insert(changeset)
+        case Repo.insert(changeset) do
+          {:ok, room} ->
+            broadcast_lobby_update()
+            {:ok, room}
+
+          error ->
+            error
+        end
     end
   end
 
   def update_status(room_id, status) when status in ["waiting", "active", "complete"] do
-    from(r in Room, where: r.id == ^room_id)
-    |> Repo.update_all(set: [status: status, updated_at: DateTime.utc_now(:second)])
+    result =
+      from(r in Room, where: r.id == ^room_id)
+      |> Repo.update_all(set: [status: status, updated_at: DateTime.utc_now(:second)])
+
+    broadcast_lobby_update()
+    result
+  end
+
+  def broadcast_lobby_update do
+    Phoenix.PubSub.broadcast(MicuPoker.PubSub, "lobby:rooms", :rooms_updated)
+  rescue
+    _ -> :ok
   end
 
   def list_players(room_id) do
@@ -115,10 +132,72 @@ defmodule MicuPoker.Rooms do
   def leave_room(room_id, user_id) do
     now = DateTime.utc_now(:second)
 
-    from(rp in RoomPlayer,
-      where: rp.room_id == ^room_id and rp.user_id == ^user_id and is_nil(rp.left_at)
-    )
-    |> Repo.update_all(set: [status: "left", left_at: now])
+    result =
+      from(rp in RoomPlayer,
+        where: rp.room_id == ^room_id and rp.user_id == ^user_id and is_nil(rp.left_at)
+      )
+      |> Repo.update_all(set: [status: "left", left_at: now])
+
+    broadcast_lobby_update()
+    result
+  end
+
+  @doc """
+  Moves a seated player to `target_seat` or seats an unseated visitor at `target_seat`.
+  """
+  def change_seat(%Room{} = room, user_id, target_seat)
+      when is_integer(target_seat) and target_seat >= 1 do
+    if target_seat > room.max_players do
+      {:error, :invalid_seat}
+    else
+      now = DateTime.utc_now(:second)
+
+      res =
+        Repo.transaction(fn ->
+          occupied_by_other? =
+            RoomPlayer
+            |> where(
+              [rp],
+              rp.room_id == ^room.id and rp.seat_number == ^target_seat and
+                rp.user_id != ^user_id and is_nil(rp.left_at)
+            )
+            |> Repo.exists?()
+
+          if occupied_by_other? do
+            Repo.rollback(:seat_taken)
+          end
+
+          existing =
+            RoomPlayer
+            |> where(
+              [rp],
+              rp.room_id == ^room.id and rp.user_id == ^user_id and is_nil(rp.left_at)
+            )
+            |> Repo.one()
+
+          if existing do
+            existing
+            |> Changeset.change(seat_number: target_seat)
+            |> Repo.update!()
+            |> Repo.preload(:user)
+          else
+            %RoomPlayer{}
+            |> RoomPlayer.changeset(%{
+              room_id: room.id,
+              user_id: user_id,
+              seat_number: target_seat,
+              stack: room.starting_chips,
+              status: "seated",
+              joined_at: now
+            })
+            |> Repo.insert!()
+            |> Repo.preload(:user)
+          end
+        end)
+
+      broadcast_lobby_update()
+      res
+    end
   end
 
   def expire_stale_rooms(cutoff \\ stale_room_cutoff()) do

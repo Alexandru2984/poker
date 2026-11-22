@@ -18,5 +18,7 @@ defmodule MicuPoker.Rooms.HandAction do
     |> validate_required([:action, :street, :created_at])
     |> validate_length(:action, max: 24)
     |> validate_number(:amount, greater_than_or_equal_to: 0)
+    |> foreign_key_constraint(:hand_id)
+    |> foreign_key_constraint(:user_id)
   end
 end

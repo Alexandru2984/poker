@@ -42,6 +42,29 @@
         </p>
       <% end %>
 
+      <h2>Quick Solo Practice</h2>
+      <p class="range">
+        Start an instant 6-max practice table populated with AI bots (play money only).
+      </p>
+      <div class="preset-strip" role="group" aria-label="Quick AI practice">
+        <button
+          type="button"
+          phx-click="quick_practice"
+          phx-value-bots="1"
+          class="button primary"
+        >
+          &#9889; Heads-Up vs 1 Bot
+        </button>
+        <button
+          type="button"
+          phx-click="quick_practice"
+          phx-value-bots="3"
+          class="button primary"
+        >
+          &#9889; 4-Max vs 3 Bots
+        </button>
+      </div>
+
       <h2>Create Table</h2>
       <div class="preset-strip" role="group" aria-label="Stakes presets">
         <button type="button" phx-click="stake_preset" phx-value-preset="micro">

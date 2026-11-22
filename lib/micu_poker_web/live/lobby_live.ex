@@ -2,6 +2,7 @@ defmodule MicuPokerWeb.LobbyLive do
   use MicuPokerWeb, :live_view
 
   alias MicuPoker.Accounts
+  alias MicuPoker.Poker.{TableServer, TableSupervisor}
   alias MicuPoker.RateLimiter
   alias MicuPoker.Rooms
   alias MicuPoker.Rooms.Room
@@ -19,6 +20,10 @@ defmodule MicuPokerWeb.LobbyLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(MicuPoker.PubSub, "lobby:rooms")
+    end
+
     defaults = Rooms.room_defaults()
 
     {:ok,
@@ -107,6 +112,67 @@ defmodule MicuPokerWeb.LobbyLive do
            :error,
            "You are creating or joining tables too quickly. Wait a moment."
          )}
+    end
+  end
+
+  def handle_event("quick_practice", params, socket) do
+    user = socket.assigns.current_user
+    bot_count = params |> Map.get("bots", "2") |> parse_bot_count()
+    defaults = socket.assigns.room_defaults
+
+    case RateLimiter.hit({:room_create_user, user.id}, @room_create_limit, @rate_window_ms) do
+      {:allow, _} ->
+        room_attrs = %{
+          "name" => String.slice("#{user.username} Practice", 0, 38),
+          "max_players" => "6",
+          "starting_chips" => to_string(defaults.starting_chips),
+          "small_blind" => to_string(defaults.small_blind),
+          "big_blind" => to_string(defaults.big_blind),
+          "currency" => defaults.currency,
+          "spectator_enabled" => "true"
+        }
+
+        with {:ok, room} <- Rooms.create_room(room_attrs, user.id),
+             {:ok, _pid} <- TableSupervisor.ensure_table(room.id) do
+          TableServer.join(room.id, user.id)
+
+          profiles = ~w(tag lag balanced station)
+
+          for idx <- 1..bot_count do
+            profile = Enum.at(profiles, rem(idx - 1, length(profiles)))
+            TableServer.dealer_add_bot(room.id, user.id, profile)
+          end
+
+          {:noreply, push_navigate(socket, to: ~p"/rooms/#{room.id}")}
+        else
+          {:error, changeset} ->
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               "Could not launch practice table: #{first_error(changeset)}"
+             )}
+        end
+
+      {:deny, _} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "You are creating or joining tables too quickly. Wait a moment."
+         )}
+    end
+  end
+
+  @impl true
+  def handle_info(:rooms_updated, socket) do
+    {:noreply, assign(socket, :rooms, Rooms.list_rooms())}
+  end
+
+  defp parse_bot_count(value) do
+    case Integer.parse(to_string(value)) do
+      {n, ""} when n in 1..5 -> n
+      _ -> 2
     end
   end
 

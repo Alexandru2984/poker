@@ -82,6 +82,9 @@ defmodule MicuPoker.Poker.TableServer do
   def show_cards(room_id, user_id),
     do: call(room_id, {:show_cards, user_id})
 
+  def switch_seat(room_id, user_id, seat_number),
+    do: call(room_id, {:switch_seat, user_id, seat_number})
+
   def react(room_id, user_id, code),
     do: call(room_id, {:react, user_id, code})
 
@@ -540,6 +543,41 @@ defmodule MicuPoker.Poker.TableServer do
       {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
     else
       false -> {:reply, {:error, :cannot_show_cards}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:switch_seat, user_id, target_seat}, _from, state) do
+    seat = normalize_amount(target_seat)
+    existing = Enum.find(state.players, &(&1.user_id == user_id))
+
+    with :ok <-
+           if(existing, do: ensure_player_not_contesting_hand(state, existing), else: :ok),
+         {:ok, room_player} <- Rooms.change_seat(state.room, user_id, seat) do
+      updated_players =
+        if existing do
+          state.players
+          |> Enum.map(fn p ->
+            if p.user_id == user_id, do: %{p | seat_number: room_player.seat_number}, else: p
+          end)
+          |> Enum.sort_by(& &1.seat_number)
+        else
+          merge_seated_players(state.players, load_players(state.room_id))
+        end
+
+      new_state =
+        %{
+          state
+          | players: updated_players,
+            room: Rooms.get_room!(state.room_id)
+        }
+        |> add_log("#{room_player.user.username} moved to Seat #{seat}.")
+        |> maybe_start_hand()
+        |> sync_room_status()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, user_id)}, new_state}
+    else
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
@@ -1041,8 +1079,9 @@ defmodule MicuPoker.Poker.TableServer do
   defp maybe_start_hand(%{stage: stage} = state) when stage in [:waiting, :complete, :showdown] do
     state = %{state | players: Enum.reject(state.players, &Map.get(&1, :leaving, false))}
     playable = Enum.filter(state.players, &dealt_in?/1)
+    human_playable? = Enum.any?(playable, &(not Map.get(&1, :is_bot, false)))
 
-    if length(playable) >= 2 do
+    if length(playable) >= 2 and human_playable? do
       start_hand(%{state | players: playable ++ Enum.reject(state.players, &dealt_in?/1)})
     else
       %{state | stage: :waiting, turn_seat: nil, action_deadline: nil}

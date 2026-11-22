@@ -124,6 +124,29 @@ defmodule MicuPokerWeb.LobbyLiveTest do
     # Stake preset updates form values
     preset_html = render_click(view, :stake_preset, %{"preset" => "high"})
     assert preset_html =~ ~s(value="20000")
+
+    # Creating a room broadcasts a live PubSub update to connected lobby views
+    {:ok, _live_room} =
+      MicuPoker.Rooms.create_room(
+        %{"name" => "Live Broadcast Table", "currency" => "FIC-RON"},
+        user.id
+      )
+
+    assert render(view) =~ "Live Broadcast Table"
+  end
+
+  test "quick_practice launches an instant practice table with AI bots", %{conn: conn} do
+    {:ok, user} = Accounts.create_guest_user()
+    conn = Plug.Test.init_test_session(conn, guest_user_id: user.id)
+    {:ok, view, _html} = live(conn, ~p"/lobby")
+
+    assert {:error, {:live_redirect, %{to: "/rooms/" <> room_id_str}}} =
+             render_click(view, :quick_practice, %{"bots" => "2"})
+
+    room_id = String.to_integer(room_id_str)
+    state = MicuPoker.Poker.TableServer.state(room_id, user.id)
+    assert length(state.players) == 3
+    assert Enum.count(state.players, & &1.is_bot) == 2
   end
 
   defp with_env(values) do

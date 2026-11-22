@@ -135,10 +135,16 @@
                 <span class="seat-bet">{format_chips(seat.player.bet, @table, @bb_view)}</span>
               <% end %>
             <% else %>
-              <div class="seat-card empty-seat">
+              <button
+                type="button"
+                phx-click="switch_seat"
+                phx-value-seat={seat.seat_number}
+                class="seat-card empty-seat"
+                title={"Move to Seat #{seat.seat_number}"}
+              >
                 <span class="seat-name">Seat {seat.seat_number}</span>
                 <span class="seat-stack">open</span>
-              </div>
+              </button>
             <% end %>
           </div>
         <% end %>

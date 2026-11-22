@@ -78,6 +78,13 @@ defmodule MicuPokerWeb.TableChannel do
     {:reply, {:error, %{reason: "invalid_payload"}}, socket}
   end
 
+  def handle_in("seat", %{"command" => "switch_seat", "seat" => seat}, socket) do
+    case TableServer.switch_seat(socket.assigns.room_id, socket.assigns.user_id, seat) do
+      {:ok, state} -> {:reply, {:ok, state}, socket}
+      {:error, reason} -> {:reply, {:error, %{reason: to_string(reason)}}, socket}
+    end
+  end
+
   def handle_in("seat", %{"command" => command}, socket)
       when command in ~w(sit_out sit_in rebuy show_cards) do
     room_id = socket.assigns.room_id

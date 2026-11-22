@@ -307,6 +307,19 @@ defmodule MicuPokerWeb.TableLive do
     end
   end
 
+  def handle_event("switch_seat", %{"seat" => seat}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.switch_seat(room_id, user_id, seat) do
+      {:ok, table} ->
+        {:noreply, put_table(socket, table)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, human_error(reason))}
+    end
+  end
+
   def handle_event("react", %{"code" => code}, socket) do
     room_id = socket.assigns.room_id
     user_id = socket.assigns.current_user.id
@@ -505,6 +518,8 @@ defmodule MicuPokerWeb.TableLive do
   defp human_error(:cannot_show_cards), do: "cards can only be shown after folding or at hand end"
   defp human_error(:invalid_reaction), do: "unknown table reaction"
   defp human_error(:room_full), do: "table has no open seats left"
+  defp human_error(:seat_taken), do: "that seat is already occupied"
+  defp human_error(:invalid_seat), do: "choose a valid seat number"
   defp human_error(reason), do: to_string(reason)
 
   defp clamp_bet_amount(amount, table, room) do

@@ -754,6 +754,19 @@ defmodule MicuPoker.Poker.TableServerTest do
     refute Enum.any?(removed.players, &(&1.is_bot == true and not Map.get(&1, :folded, false)))
   end
 
+  test "player can switch to an open seat between hands", %{
+    room: room,
+    user_one: user_one
+  } do
+    assert {:ok, state_one} = join_connected(room, user_one)
+    assert own_player(state_one).seat_number == 1
+
+    assert {:ok, moved_state} = TableServer.switch_seat(room.id, user_one.id, 3)
+    assert own_player(moved_state).seat_number == 3
+
+    assert {:error, :invalid_seat} = TableServer.switch_seat(room.id, user_one.id, 99)
+  end
+
   defp create_test_room(user, name, spectator_enabled) do
     Rooms.create_room(
       %{

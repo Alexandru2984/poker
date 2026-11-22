@@ -426,6 +426,7 @@ defmodule MicuPoker.Rooms do
       active_rooms: Repo.aggregate(from(r in Room, where: r.status == "active"), :count),
       users: Repo.aggregate(MicuPoker.Accounts.User, :count),
       completed_hands: Repo.aggregate(from(h in Hand, where: not is_nil(h.ended_at)), :count),
+      fictional_currencies: Room.currency_codes(),
       play_money_only: true
     }
   end

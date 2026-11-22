@@ -81,7 +81,7 @@ else
 fi
 
 echo "Pages"
-for path in / /lobby /leaderboard /docs /login /register; do
+for path in / /lobby /calculator /leaderboard /docs /login /register /sitemap.xml; do
   code=$(curl -fsS --max-time 10 -o /dev/null -w "%{http_code}" "$PUBLIC$path" || echo 000)
   if [[ "$code" == "200" ]]; then
     ok "$path -> 200"

@@ -69,26 +69,24 @@ defmodule MicuPokerWeb.LobbyLiveTest do
 
     {:ok, user} = Accounts.create_guest_user()
     conn = Plug.Test.init_test_session(conn, guest_user_id: user.id)
+    {:ok, view, _html} = live(conn, ~p"/lobby")
 
+    # 22 > 2 * limit (10), so even across a 60s fixed-window boundary it is
+    # guaranteed to trigger the per-user room creation rate limiter.
     results =
-      for idx <- 1..12 do
-        {:ok, view, _html} = live(conn, ~p"/lobby")
-
+      for idx <- 1..22 do
         render_submit(view, :create_room, %{
           "room" => %{
             "name" => "Spam Room #{idx}",
             "max_players" => "6",
             "starting_chips" => "1000",
-            "small_blind" => "5",
+            "small_blind" => "10",
             "big_blind" => "10"
           }
         })
       end
 
-    assert Enum.any?(results, fn
-             {:error, {:live_redirect, _}} -> false
-             html when is_binary(html) -> html =~ "too quickly"
-           end)
+    assert Enum.any?(results, fn html -> is_binary(html) and html =~ "too quickly" end)
   end
 
   test "lobby supports fictional currency selector, stake presets, and table search", %{

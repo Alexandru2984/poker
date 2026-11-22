@@ -150,11 +150,14 @@ not start without them.
 | Route | Notes |
 | --- | --- |
 | `GET /` | Landing page. Static; creates no guest user. |
-| `GET /lobby` | Table list and creation. |
-| `GET /rooms/:id` | The table. LiveView. |
+| `GET /lobby` | Table list, fictional currency selector, search, and instant AI bot practice. |
+| `GET /rooms/:id` | The table. LiveView with HUD analytics, dealer console, and pre-actions. |
+| `GET /profile` | Career statistics, personal fictional chip ledger, name and password settings. |
+| `GET /calculator` | Interactive 52-card & 13x13 preflop range equity, outs, and pot odds calculator. |
 | `GET /leaderboard` | Rankings, plus your own numbers when signed in. |
 | `GET /login`, `/register` | Accounts. Rate limited per IP and per username. |
-| `GET /docs` | Rules and house policy. |
+| `GET /docs` | Rules, fictional currencies, dealer privileges, and house policy. |
+| `GET /sitemap.xml` | XML sitemap for search engines. Creates no guest user. |
 | `GET /health` | `{"status":"ok","service":"micupoker"}` |
 | `GET /api/rooms`, `/api/rooms/:id`, `/api/stats` | Read-only JSON. |
 | `GET /admin/dashboard` | LiveDashboard. 404 unless `ADMIN_USER` and a 16-byte `ADMIN_PASSWORD` are set. |

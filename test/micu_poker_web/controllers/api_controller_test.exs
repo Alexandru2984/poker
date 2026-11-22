@@ -11,7 +11,11 @@ defmodule MicuPokerWeb.ApiControllerTest do
     before_count = Repo.aggregate(User, :count)
 
     conn = get(conn, ~p"/api/stats")
-    assert %{"play_money_only" => true} = json_response(conn, 200)
+
+    assert %{"play_money_only" => true, "fictional_currencies" => currencies} =
+             json_response(conn, 200)
+
+    assert "FIC-RON" in currencies
 
     conn = get(build_conn(), ~p"/api/rooms")
     assert %{"rooms" => rooms} = json_response(conn, 200)

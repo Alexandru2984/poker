@@ -55,6 +55,7 @@ defmodule MicuPokerWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/sitemap.xml", PageController, :sitemap
     get "/docs", DocsController, :show
     get "/leaderboard", LeaderboardController, :index
     delete "/logout", SessionController, :delete

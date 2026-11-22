@@ -28,8 +28,22 @@ connections so closing one tab does not disconnect a player who has another open
 that needs no signup. A guest can be upgraded to an account in place without
 losing their name or chips.
 
-**Around the table.** Chat, an action log, hand history, per-player statistics,
-a leaderboard, password-protected tables, spectator mode, and an invite link.
+**Around the table.** Chat, quick seat reactions (`NH`, `GG`, `WP`, `GL`, `OOF`),
+voluntary card reveal (`Show My Cards`) after folding or winning uncontested,
+an action log, hand history, per-player statistics, a leaderboard,
+password-protected tables, spectator mode, and an invite link.
+
+**Fictional currencies & table dealer controls.** Tables can run on 7 fictional
+play-money currencies (`CHIPS`, `FIC-RON`, `FIC-EUR`, `FIC-USD`, `GOLD`,
+`CREDITS`, `BB-PTS`). The table creator (or any seated player they transfer the
+role to) acts as the **Dealer / Host** and can grant fictional funds, set or
+reset stacks, pause/resume dealing, change blinds or currency between hands, and
+spawn or remove practice AI bots (`TAG`, `LAG`, `GTO`, `Calling Station`).
+
+**Simulator HUD.** Live Pot Odds (percentage & ratio), Stack-to-Pot Ratio
+(SPR), stack depth in Big Blinds (`BB` toggle), preflop strength tiers, and
+exact postflop next-street improvement outs, plus optional synthesized Web Audio
+turn cues.
 
 **Interface.** Built mobile-first. The table is drawn viewer-relative — you are
 always at the bottom of the felt — with tap targets sized for a thumb, a sticky

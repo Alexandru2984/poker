@@ -1,50 +1,62 @@
 <main class="docs-page">
-  <section class="docs-hero">
-    <p class="eyebrow">MicuPoker Documentation</p>
-    <h1>Play-money Texas Hold'em over Phoenix real-time channels</h1>
-    <p>
-      MicuPoker is an educational multiplayer poker demo. Chips are virtual demo chips only, have no real-world value, and cannot be bought, sold, deposited, withdrawn, paid out, cashed out, or converted to money or crypto.
-    </p>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">MicuPoker Documentation</p>
+      <h1>Play-money Texas Hold'em Simulator &amp; Rules</h1>
+    </div>
+    <nav>
+      <.link navigate={~p"/lobby"}>Lobby</.link>
+      <.link navigate={~p"/leaderboard"}>Leaderboard</.link>
+      <.link navigate={~p"/"}>Home</.link>
+    </nav>
+  </header>
+
+  <section class="notice">
+    MicuPoker is a complete multiplayer Texas Hold'em poker simulator. Every currency and chip balance on this platform is 100% fictional play money with zero real-world monetary value — no deposits, no withdrawals, no card payments, no cash-out, and no crypto.
   </section>
 
   <section class="docs-grid">
     <article>
-      <h2>What v1 Does</h2>
+      <h2>Accounts &amp; Guest Seats</h2>
       <p>
-        Guests receive a server-side demo account, create or join rooms, sit at a table, chat, receive private cards, act in turn, and finish hands in real time. WebSocket connections are tracked separately from seat reservation so reconnects and multiple tabs behave predictably.
+        Sit down immediately with an automatic guest identity, or register a permanent username and password account (protected with 210,000-iteration PBKDF2-HMAC-SHA512). Upgrading a guest account preserves your display name, active seats, hand history, and leaderboard stats.
       </p>
     </article>
     <article>
-      <h2>Table Creation</h2>
+      <h2>Fictional Currencies &amp; Table Dealer</h2>
       <p>
-        Rooms validate name, max seats from 2 to the configured limit, starting virtual chips, blinds, and spectator mode. Default values come from the server environment, and the big blind must fit inside the starting stack. If a full room has spectators disabled, late LiveView, controller, and Channel joins are rejected. Password-protected rooms are intentionally disabled in v1 until full access control is implemented.
+        Rooms can be created with different fictional play-money currencies (<code>CHIPS</code>, <code>FIC-RON</code>, <code>FIC-EUR</code>, <code>FIC-USD</code>, <code>GOLD</code>, <code>CREDITS</code>, <code>BB-PTS</code>). Each table has a designated
+        <strong>Dealer / Host</strong>
+        (initially the creator, transferable to any seated player) who can grant fictional funds, adjust or reset stacks, pause/resume dealing, and change blinds or currency between hands.
       </p>
     </article>
     <article>
-      <h2>Poker Actions</h2>
+      <h2>Simulator HUD &amp; Practice AI Bots</h2>
       <p>
-        The server validates fold, check, call, bet, raise, and all-in. Turn order, deck, cards, stack changes, main pots, side pots, and winners are server-authoritative. Sanitized table state exposes internal user IDs only to the current viewer. The UI shows real card faces, suit symbols, own-hand strength, board texture, and best five cards when available.
+        Seated players receive a live simulator HUD showing estimated hand equity, exact next-street improvement outs, Pot Odds percentage and ratio, Stack-to-Pot Ratio (SPR), and a toggleable Big Blind (<code>BB</code>) stack view. The table dealer can also add or remove practice AI bots (<code>TAG</code>, <code>LAG</code>, <code>GTO</code>, <code>Calling Station</code>) for solo training or short-handed games.
       </p>
     </article>
     <article>
-      <h2>WebSocket Events</h2>
+      <h2>Private Tables &amp; Card Privacy</h2>
       <p>
-        Endpoint: <code>/socket</code>. Topic: <code>table:&lt;room_id&gt;</code>. Use the signed
+        Tables support optional PBKDF2-hashed passwords and spectator controls. The deck is shuffled server-side with <code>:crypto.strong_rand_bytes</code>. Opponent hole cards never leave the server process until an active showdown — folded cards remain hidden even in multi-way showdowns unless the player voluntarily clicks <strong>Show My Cards</strong>.
+      </p>
+    </article>
+    <article>
+      <h2>WebSocket Protocol</h2>
+      <p>
+        Endpoint: <code>/socket</code>. Topic: <code>table:&lt;room_id&gt;</code>. Authenticate with the signed
         <code>socket-token</code>
-        meta value as <code>?token=...</code>; raw <code>user_id</code>
-        parameters are rejected. Events: <code>state</code>, <code>action</code>, and <code>chat</code>. Phoenix LiveView also uses <code>/live</code>.
+        meta tag via <code>?token=...</code>; raw <code>user_id</code>
+        parameters are rejected. Supported events: <code>state</code>, <code>action</code>,
+        <code>seat</code>
+        (<code>sit_out</code>, <code>sit_in</code>, <code>rebuy</code>, <code>show_cards</code>), <code>react</code>, <code>dealer</code>, and <code>chat</code>.
       </p>
     </article>
     <article>
-      <h2>API Routes</h2>
+      <h2>HTTP &amp; JSON API Routes</h2>
       <p>
-        <code>GET /health</code>, <code>GET /api/rooms</code>, <code>GET /api/rooms/:id</code>, <code>GET /api/stats</code>. Browser routes include <code>/</code>, <code>/lobby</code>, <code>/rooms/:id</code>, and <code>/docs</code>.
-      </p>
-    </article>
-    <article>
-      <h2>Limitations</h2>
-      <p>
-        Persistent private hole-card history is not exposed by public APIs. v1 uses guest sessions rather than full username/password accounts.
+        Read-only JSON endpoints: <code>GET /health</code>, <code>GET /api/rooms</code>, <code>GET /api/rooms/:id</code>, <code>GET /api/stats</code>. Browser routes: <code>/</code>, <code>/lobby</code>, <code>/rooms/:id</code>, <code>/leaderboard</code>, <code>/docs</code>, <code>/login</code>, <code>/register</code>, and <code>/sitemap.xml</code>.
       </p>
     </article>
   </section>

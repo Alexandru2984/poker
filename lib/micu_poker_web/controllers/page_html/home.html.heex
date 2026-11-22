@@ -1,4 +1,8 @@
-<main class="landing">
+<main class="landing" itemscope itemtype="https://schema.org/WebApplication">
+  <meta itemprop="name" content="MicuPoker" />
+  <meta itemprop="applicationCategory" content="GameApplication" />
+  <meta itemprop="operatingSystem" content="Any" />
+  <meta itemprop="isAccessibleForFree" content="true" />
   <header class="topbar">
     <div>
       <p class="eyebrow">Play-money only</p>
@@ -103,17 +107,18 @@
       </p>
     </article>
     <article>
-      <h3>Private tables</h3>
+      <h3>Dealer &amp; Fictional Currencies</h3>
       <p>
-        Give a table a password and share the link. Only people with the password get a
-        seat, and the password is stored hashed.
+        Pick from 7 fictional currencies (<code>CHIPS</code>, <code>FIC-RON</code>, <code>FIC-EUR</code>, <code>FIC-USD</code>, <code>GOLD</code>). The table dealer can grant fictional funds, adjust
+        stacks, change blinds and pause dealing between hands.
       </p>
     </article>
     <article>
-      <h3>Open by design</h3>
+      <h3>Simulator HUD &amp; AI Bots</h3>
       <p>
-        A documented JSON API for rooms and stats, plus a WebSocket protocol you can
-        build your own client against.
+        Live Pot Odds, SPR, exact improvement outs, voluntary card reveals, quick reactions and
+        practice AI bots (<code>TAG</code>, <code>LAG</code>, <code>GTO</code>) when you want to
+        train solo or fill seats.
       </p>
     </article>
   </section>

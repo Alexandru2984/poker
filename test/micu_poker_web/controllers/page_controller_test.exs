@@ -29,4 +29,16 @@ defmodule MicuPokerWeb.PageControllerTest do
 
     assert Repo.aggregate(User, :count) == before_count
   end
+
+  test "GET /sitemap.xml serves valid XML sitemap without creating guest users", %{conn: conn} do
+    before_count = Repo.aggregate(User, :count)
+
+    conn = get(conn, ~p"/sitemap.xml")
+    body = response(conn, 200)
+
+    assert body =~ "<urlset"
+    assert body =~ "/lobby</loc>"
+    assert body =~ "/docs</loc>"
+    assert Repo.aggregate(User, :count) == before_count
+  end
 end

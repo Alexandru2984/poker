@@ -12,22 +12,30 @@
       {assigns[:page_title] || "Play-money Texas Hold'em"}
     </.live_title>
 
+    <% description =
+      assigns[:page_description] ||
+        "Play-money Texas Hold'em poker simulator in the browser. Server-authoritative dealing, fictional currencies, dealer table controls, practice AI bots, pot odds HUD and side pots. No deposits, no withdrawals, no real-world value." %>
+    <% canonical_url = MicuPokerWeb.Endpoint.url() <> (assigns[:canonical_path] || "/") %>
+
+    <meta name="description" content={description} />
+    <meta name="robots" content={assigns[:meta_robots] || "index, follow"} />
     <meta
-      name="description"
-      content="Play-money Texas Hold'em in the browser. Server-authoritative dealing, side pots and a real betting clock. No deposits, no withdrawals, no real-world value."
+      name="keywords"
+      content="texas holdem simulator, play money poker, free poker simulator, poker pot odds calculator, multiplayer poker browser"
     />
     <meta name="theme-color" content="#0f5c46" />
     <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href={canonical_url} />
 
     <meta property="og:site_name" content="MicuPoker" />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical_url} />
     <meta property="og:title" content={assigns[:page_title] || "MicuPoker"} />
-    <meta
-      property="og:description"
-      content="Play-money Texas Hold'em in the browser. No deposits, no withdrawals, no real-world value."
-    />
-    <meta property="og:image" content={~p"/images/icon.svg"} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={MicuPokerWeb.Endpoint.url() <> ~p"/images/icon.svg"} />
     <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={assigns[:page_title] || "MicuPoker"} />
+    <meta name="twitter:description" content={description} />
 
     <link rel="icon" href={~p"/favicon.ico"} sizes="32x32" />
     <link rel="icon" href={~p"/images/icon.svg"} type="image/svg+xml" />

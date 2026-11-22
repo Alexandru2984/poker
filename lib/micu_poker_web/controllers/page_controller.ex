@@ -12,8 +12,33 @@ defmodule MicuPokerWeb.PageController do
   """
   def home(conn, _params) do
     conn
-    |> assign(:page_title, "Play-money Texas Hold'em")
+    |> assign(:page_title, "Play-money Texas Hold'em Simulator")
+    |> assign(:canonical_path, "/")
+    |> assign(
+      :page_description,
+      "Free play-money multiplayer Texas Hold'em poker simulator with fictional currencies, dealer table controls, practice AI bots, pot odds HUD and side pots. Zero real money."
+    )
     |> render(:home, stats: stats(), open_tables: open_tables())
+  end
+
+  def sitemap(conn, _params) do
+    base = MicuPokerWeb.Endpoint.url()
+
+    xml = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>#{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+      <url><loc>#{base}/lobby</loc><changefreq>always</changefreq><priority>0.9</priority></url>
+      <url><loc>#{base}/leaderboard</loc><changefreq>hourly</changefreq><priority>0.8</priority></url>
+      <url><loc>#{base}/docs</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+      <url><loc>#{base}/login</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+      <url><loc>#{base}/register</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+    </urlset>
+    """
+
+    conn
+    |> put_resp_content_type("application/xml")
+    |> send_resp(200, String.trim(xml))
   end
 
   defp stats do

@@ -79,6 +79,12 @@ defmodule MicuPoker.Poker.TableServer do
   def dealer_remove_bots(room_id, dealer_id),
     do: call(room_id, {:dealer_remove_bots, dealer_id})
 
+  def dealer_set_ante(room_id, dealer_id, ante),
+    do: call(room_id, {:dealer_set_ante, dealer_id, ante})
+
+  def dealer_set_blind_timer(room_id, dealer_id, minutes),
+    do: call(room_id, {:dealer_set_blind_timer, dealer_id, minutes})
+
   def show_cards(room_id, user_id),
     do: call(room_id, {:show_cards, user_id})
 
@@ -132,6 +138,10 @@ defmodule MicuPoker.Poker.TableServer do
       pot: 0,
       stage: :waiting,
       paused: false,
+      ante: 0,
+      blind_level: 1,
+      blind_interval_minutes: 0,
+      next_blind_level_at: nil,
       hand_number: 0,
       hand: nil,
       current_bet: 0,
@@ -527,6 +537,53 @@ defmodule MicuPoker.Poker.TableServer do
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_set_ante, dealer_id, ante_input}, _from, state) do
+    ante = normalize_amount(ante_input)
+
+    with :ok <- authorize_dealer(state, dealer_id),
+         :ok <- ensure_between_hands(state),
+         true <- ante >= 0 and ante <= state.room.small_blind do
+      currency = state.room.currency || "CHIPS"
+
+      new_state =
+        %{state | ante: ante}
+        |> add_log("Dealer set table ante to #{ante} #{currency}.")
+        |> touch()
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      false -> {:reply, {:error, :invalid_ante}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:dealer_set_blind_timer, dealer_id, minutes_input}, _from, state) do
+    minutes = normalize_amount(minutes_input)
+
+    with :ok <- authorize_dealer(state, dealer_id),
+         true <- minutes >= 0 and minutes <= 60 do
+      new_state =
+        if minutes == 0 do
+          %{state | blind_interval_minutes: 0, next_blind_level_at: nil}
+          |> add_log("Dealer disabled automated blind level timer.")
+          |> touch()
+        else
+          next_at = DateTime.add(DateTime.utc_now(:second), minutes * 60, :second)
+
+          %{state | blind_interval_minutes: minutes, next_blind_level_at: next_at}
+          |> add_log("Dealer enabled Sit & Go blind escalation every #{minutes} min.")
+          |> touch()
+        end
+
+      broadcast(new_state)
+      {:reply, {:ok, TableState.sanitize(new_state, dealer_id)}, new_state}
+    else
+      false -> {:reply, {:error, :invalid_blind_timer}, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
@@ -1163,7 +1220,10 @@ defmodule MicuPoker.Poker.TableServer do
   end
 
   defp start_hand(state) do
-    state = cancel_next_hand(state)
+    state =
+      state
+      |> cancel_next_hand()
+      |> maybe_advance_blind_level()
 
     players =
       state.players
@@ -1237,11 +1297,10 @@ defmodule MicuPoker.Poker.TableServer do
           raise_closed: MapSet.new(),
           log: Enum.take(state.log, 60)
       }
+      |> collect_antes(players)
       |> take_chips(small.user_id, state.room.small_blind)
       |> take_chips(big.user_id, state.room.big_blind)
-      |> add_log(
-        "Hand #{state.hand_number + 1} started. Blinds #{state.room.small_blind}/#{state.room.big_blind}."
-      )
+      |> add_log(hand_start_log_line(state))
 
     # Preflop action opens to the left of the big blind. Heads-up that wraps
     # back to the button, who is also the small blind. When a short stack goes
@@ -1269,6 +1328,82 @@ defmodule MicuPoker.Poker.TableServer do
       [] -> true
       [sole_bettor] -> sole_bettor.bet >= max_bet
       _multiple -> false
+    end
+  end
+
+  defp hand_start_log_line(state) do
+    ante = Map.get(state, :ante, 0)
+
+    base =
+      "Hand #{state.hand_number + 1} started. Blinds #{state.room.small_blind}/#{state.room.big_blind}"
+
+    if ante > 0, do: "#{base} (ante #{ante}).", else: "#{base}."
+  end
+
+  defp collect_antes(state, dealt_players) do
+    ante = Map.get(state, :ante, 0)
+
+    if ante > 0 do
+      Enum.reduce(dealt_players, state, fn player, acc ->
+        take_ante_chips(acc, player.user_id, ante)
+      end)
+    else
+      state
+    end
+  end
+
+  defp take_ante_chips(state, user_id, amount) do
+    player = Enum.find(state.players, &(&1.user_id == user_id))
+    taken = min(player.stack, amount)
+
+    update_player(state, user_id, fn p ->
+      %{
+        p
+        | stack: p.stack - taken,
+          contribution_total: Map.get(p, :contribution_total, 0) + taken,
+          all_in: p.stack - taken == 0
+      }
+    end)
+    |> Map.update!(:pot, &(&1 + taken))
+  end
+
+  defp maybe_advance_blind_level(state) do
+    interval = Map.get(state, :blind_interval_minutes, 0)
+    next_at = Map.get(state, :next_blind_level_at, nil)
+    now = DateTime.utc_now(:second)
+
+    if interval > 0 and is_struct(next_at, DateTime) and
+         DateTime.compare(now, next_at) in [:gt, :eq] do
+      room = state.room
+      new_sb = min(max(div(room.small_blind * 3, 2), room.small_blind + 5), 1_000)
+      new_bb = min(max(new_sb * 2, room.big_blind + 10), 2_000)
+      new_buyin = max(room.starting_chips, new_bb * 10) |> min(100_000)
+      new_level = Map.get(state, :blind_level, 1) + 1
+      future_at = DateTime.add(now, interval * 60, :second)
+
+      attrs = %{
+        "small_blind" => to_string(new_sb),
+        "big_blind" => to_string(new_bb),
+        "starting_chips" => to_string(new_buyin),
+        "currency" => room.currency || "CHIPS"
+      }
+
+      case Rooms.update_room_settings(room, attrs) do
+        {:ok, updated_room} ->
+          %{
+            state
+            | room: updated_room,
+              min_raise: updated_room.big_blind,
+              blind_level: new_level,
+              next_blind_level_at: future_at
+          }
+          |> add_log("Tournament Level #{new_level}: Blinds increased to #{new_sb}/#{new_bb}!")
+
+        {:error, _} ->
+          %{state | next_blind_level_at: future_at}
+      end
+    else
+      state
     end
   end
 

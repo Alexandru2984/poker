@@ -6,7 +6,17 @@
         <h1>{@table.room.name}</h1>
         <p class="table-meta">
           <span>#{@room_id}</span>
-          <span>{@table.room.small_blind}/{@table.room.big_blind}</span>
+          <span>
+            {@table.room.small_blind}/{@table.room.big_blind}
+            <%= if Map.get(@table, :ante, 0) > 0 do %>
+              (ante {@table.ante})
+            <% end %>
+          </span>
+          <%= if Map.get(@table, :blind_interval_minutes, 0) > 0 do %>
+            <span class="currency-pill">
+              Lvl {Map.get(@table, :blind_level, 1)} &middot; {@table.blind_interval_minutes}m
+            </span>
+          <% end %>
           <span class="currency-pill">{@table.room.currency}</span>
           <span class="play-money">Play money</span>
           <%= if @table.paused do %>
@@ -419,6 +429,41 @@
                   >
                     Reset All Stacks ({@table.room.starting_chips})
                   </button>
+                </div>
+
+                <div class="dealer-section">
+                  <h3>Sit &amp; Go Blind Timer &amp; Table Ante</h3>
+                  <div class="bot-controls" role="group" aria-label="Blind level timer">
+                    <%= for {min_val, label} <- [{0, "Timer Off"}, {3, "3m Levels"}, {5, "5m Levels"}, {10, "10m Levels"}] do %>
+                      <button
+                        type="button"
+                        phx-click="dealer_set_blind_timer"
+                        phx-value-minutes={min_val}
+                        class={Map.get(@table, :blind_interval_minutes, 0) == min_val && "active"}
+                      >
+                        {label}
+                      </button>
+                    <% end %>
+                  </div>
+                  <div class="bot-controls" role="group" aria-label="Table ante presets">
+                    <%= for {ante_val, label} <- [
+                          {0, "No Ante"},
+                          {max(div(@table.room.small_blind, 5), 1), "20% SB Ante"},
+                          {max(div(@table.room.small_blind, 2), 1), "50% SB Ante"},
+                          {@table.room.small_blind, "Full SB Ante"}
+                        ]
+                        |> Enum.uniq_by(&elem(&1, 0)) do %>
+                      <button
+                        type="button"
+                        phx-click="dealer_set_ante"
+                        phx-value-ante={ante_val}
+                        disabled={@table.stage not in [:waiting, :complete, :showdown]}
+                        class={Map.get(@table, :ante, 0) == ante_val && "active"}
+                      >
+                        {label} ({ante_val})
+                      </button>
+                    <% end %>
+                  </div>
                 </div>
 
                 <div class="dealer-section">

@@ -796,6 +796,30 @@ defmodule MicuPoker.Poker.TableServerTest do
     assert [%{action: "fold", street: "preflop"}] = actions
   end
 
+  test "dealer can configure table ante and Sit & Go blind level timer", %{
+    room: room,
+    user_one: user_one,
+    user_two: user_two
+  } do
+    assert {:ok, _} = join_connected(room, user_one)
+
+    # Set table ante to 2 chips and blind timer to 5 minutes before second player joins
+    assert {:ok, state_with_ante} = TableServer.dealer_set_ante(room.id, user_one.id, 2)
+    assert state_with_ante.ante == 2
+
+    assert {:ok, state_with_timer} = TableServer.dealer_set_blind_timer(room.id, user_one.id, 5)
+    assert state_with_timer.blind_interval_minutes == 5
+    assert state_with_timer.next_blind_level_at != nil
+
+    # Reject ante larger than small blind
+    assert {:error, :invalid_ante} = TableServer.dealer_set_ante(room.id, user_one.id, 999)
+
+    assert {:ok, hand_state} = join_connected(room, user_two)
+    assert hand_state.stage == :preflop
+    # Pot includes 5 (SB) + 10 (BB) + 2*2 (antes) = 19
+    assert hand_state.pot == room.small_blind + room.big_blind + 4
+  end
+
   defp create_test_room(user, name, spectator_enabled) do
     Rooms.create_room(
       %{

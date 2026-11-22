@@ -255,6 +255,38 @@ defmodule MicuPokerWeb.TableLive do
     end
   end
 
+  def handle_event("dealer_set_ante", %{"ante" => ante}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_set_ante(room_id, user_id, ante) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "Table ante updated to #{table.ante}.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
+  def handle_event("dealer_set_blind_timer", %{"minutes" => minutes}, socket) do
+    room_id = socket.assigns.room_id
+    user_id = socket.assigns.current_user.id
+
+    case TableServer.dealer_set_blind_timer(room_id, user_id, minutes) do
+      {:ok, table} ->
+        {:noreply,
+         socket
+         |> put_table(table)
+         |> put_flash(:info, "Sit & Go blind level timer updated.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Dealer action failed: #{human_error(reason)}")}
+    end
+  end
+
   def handle_event("time_bank", _params, socket) do
     room_id = socket.assigns.room_id
     user_id = socket.assigns.current_user.id
@@ -674,6 +706,8 @@ defmodule MicuPokerWeb.TableLive do
   defp human_error(:seat_taken), do: "that seat is already occupied"
   defp human_error(:invalid_seat), do: "choose a valid seat number"
   defp human_error(:time_bank_already_used), do: "time bank already used in this hand"
+  defp human_error(:invalid_ante), do: "ante must be between 0 and the small blind"
+  defp human_error(:invalid_blind_timer), do: "blind timer must be between 0 and 60 minutes"
   defp human_error(reason), do: to_string(reason)
 
   defp clamp_bet_amount(amount, table, room) do
